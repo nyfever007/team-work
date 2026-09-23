@@ -1,0 +1,1 @@
+ALTER TABLE `members` ADD `annual_override` real;

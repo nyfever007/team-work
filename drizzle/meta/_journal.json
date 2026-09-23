@@ -1,0 +1,125 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790068454089,
+      "tag": "0000_steep_pestilence",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790069437879,
+      "tag": "0001_overconfident_domino",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790073188327,
+      "tag": "0002_skinny_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790073893546,
+      "tag": "0003_fix_users_member_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790074576561,
+      "tag": "0004_exotic_rocket_racer",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790122805086,
+      "tag": "0005_bouncy_namora",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790123715147,
+      "tag": "0006_misty_skin",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790125076990,
+      "tag": "0007_sturdy_quentin_quire",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790125713252,
+      "tag": "0008_teams",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790126544280,
+      "tag": "0009_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790126785148,
+      "tag": "0010_snapshot_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790128594574,
+      "tag": "0011_team_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1790130022114,
+      "tag": "0012_leave_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1790132859890,
+      "tag": "0013_member_rank_phone",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1790137287035,
+      "tag": "0014_annual_override",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1790137869459,
+      "tag": "0015_meeting_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1790139767724,
+      "tag": "0016_emails",
+      "breakpoints": true
+    }
+  ]
+}
