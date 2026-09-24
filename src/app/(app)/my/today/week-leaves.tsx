@@ -50,7 +50,7 @@ export function WeekLeaves({ days, today, holidays, members, leaves, myMemberId 
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">이번 주 휴가</h2>
+        <h2 className="text-base font-bold">이번 주 휴가</h2>
         <div className="flex gap-3 text-sm text-muted-foreground">
           <Link href="/team/milestones?view=calendar" className="hover:underline">
             마일스톤 달력 →

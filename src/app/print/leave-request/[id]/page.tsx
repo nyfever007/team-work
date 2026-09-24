@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/dal";
+import { todayKey } from "@/lib/dates";
 import { LEAVE_FORM_LABEL, type LeaveType } from "@/lib/leaves/types";
 import { memberById } from "@/lib/members/queries";
 import { formatDays } from "@/lib/requests/calc";
@@ -33,12 +34,16 @@ export default async function LeaveRequestPrintPage({ params, searchParams }: Pa
   const box = (types: LeaveType[]) => (types.includes(req.type) ? "■" : "□");
   const half = req.type === "half_am" ? " (오전)" : req.type === "half_pm" ? " (오후)" : "";
   const period = req.startDate === req.endDate ? req.startDate : `${req.startDate} ~ ${req.endDate}`;
+  // Once approved, the 1차 결재 작성자 box carries the member's name and the approval date (MM/DD, KST) below it.
+  const approved = req.status === "approved";
+  const approvedOn = approved && req.decidedAt ? todayKey(req.decidedAt).slice(5).replace("-", "/") : null;
 
   return (
     <>
       <PrintToolbar autoPrint={sp.auto === "1"} />
       <div className="sheet">
         {req.status === "cancelled" && <div className="status-stamp">취 소</div>}
+        {req.status === "rejected" && <div className="status-stamp">반 려</div>}
         <div className="hdr">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/diverse-logo.png" alt="DIVERSE" />
@@ -71,7 +76,7 @@ export default async function LeaveRequestPrintPage({ params, searchParams }: Pa
             <tr>
               <td className="lbl nl two">보관<br />부서</td>
               <td className="l" colSpan={3}>{req.teamName}</td>
-              <td className="tall" rowSpan={2} />
+              <td className="tall signed" rowSpan={2}>{approved ? req.memberName : null}</td>
               <td className="tall" rowSpan={2} />
               <td className="tall" rowSpan={2} />
               <td className="tall" rowSpan={2} />
@@ -87,7 +92,7 @@ export default async function LeaveRequestPrintPage({ params, searchParams }: Pa
               <td className="lbl">직위</td>
               <td className="lbl">성명</td>
               <td className="lbl" rowSpan={2} />
-              <td className="sig">/</td>
+              <td className="sig">{approvedOn ?? "/"}</td>
               <td className="sig">/</td>
               <td className="sig">/</td>
               <td className="sig">/</td>

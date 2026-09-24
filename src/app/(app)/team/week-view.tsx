@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { SafeUser } from "@/lib/auth/session";
-import { allMembers } from "@/lib/members/queries";
+import { teamScopedMembers } from "@/lib/members/access";
 import { addDays, formatKoDate, formatTime, weekStartOf } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
 import { LEAVE_BADGE_CLASS, LEAVE_LABEL } from "@/lib/leaves/types";
@@ -27,7 +27,7 @@ export function WeekView({ user, weekStart, today, toggle }: { user: SafeUser; w
   const week = weekInfo(weekStart, holidays);
   const thisWeek = weekStartOf(today);
 
-  const members = allMembers();
+  const members = teamScopedMembers(user);
   const ids = members.map((m) => m.id);
   const [logs, reports, leaves] = ids.length
     ? [
@@ -53,6 +53,7 @@ export function WeekView({ user, weekStart, today, toggle }: { user: SafeUser; w
         <div>
           <h2 className="text-lg font-semibold">주간 기록</h2>
           <p className="text-sm text-muted-foreground">
+            {user.role !== "admin" && members[0] && `${members[0].team} · `}
             {formatKoDate(weekStart)} ~ {formatKoDate(weekEnd)} · 근무일 {week.workingDays.length}일
           </p>
         </div>

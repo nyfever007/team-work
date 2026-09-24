@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin, requireUser } from "@/lib/auth/dal";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { db, schema } from "@/lib/db";
+import { memberAccess } from "@/lib/members/access";
 
 export type AccountState = { ok: true; message: string } | { ok: false; error: string } | undefined;
 
@@ -14,12 +15,15 @@ function checkPassword(pw: string): string | null {
   return null;
 }
 
-/** Admin: create a new login for a member, or link an existing unlinked account. */
+/** Admin: create a new login for a member, or link an existing unlinked account. Team leader: create only, own team. */
 export async function linkAccount(memberId: number, _prev: AccountState, formData: FormData): Promise<AccountState> {
   try {
-    await requireAdmin();
+    const actor = await requireUser();
     const member = db.select().from(schema.members).where(eq(schema.members.id, memberId)).get();
     if (!member) return { ok: false, error: "구성원을 찾을 수 없습니다." };
+    // Team leaders may create (not link) a login for their own teammates.
+    const access = memberAccess(actor);
+    if (!access.isAdmin && !(access.canManage(member) && String(formData.get("mode") ?? "new") === "new")) return { ok: false, error: "관리자 권한이 필요합니다." };
     const already = db.select().from(schema.users).where(eq(schema.users.memberId, memberId)).get();
     if (already) return { ok: false, error: "이미 계정이 연결된 구성원입니다." };
 
@@ -46,6 +50,7 @@ export async function linkAccount(memberId: number, _prev: AccountState, formDat
       .values({ username: email, email, name: member.name, role: "member", memberId, passwordHash: hashPassword(password) })
       .run();
     revalidatePath("/admin/members");
+    revalidatePath("/team/members", "layout");
     revalidatePath("/");
     return { ok: true, message: `${email} 계정을 만들었습니다. 초기 비밀번호를 본인에게 전달하세요.` };
   } catch (e) {

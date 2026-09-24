@@ -2,8 +2,10 @@
 
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/auth/dal";
+import { requireAdmin, requireUser } from "@/lib/auth/dal";
+import { hashPassword } from "@/lib/auth/password";
 import { db, schema } from "@/lib/db";
+import { memberAccess } from "./access";
 import { memberInput, type MemberFieldErrors, type MemberInput } from "./schema";
 
 export type MemberFormState =
@@ -51,16 +53,40 @@ function teamExists(teamId: number) {
   return !!db.select({ id: schema.teams.id }).from(schema.teams).where(eq(schema.teams.id, teamId)).get();
 }
 
+function revalidateMembers() {
+  revalidatePath("/admin/members");
+  revalidatePath("/team/members", "layout");
+  revalidatePath("/");
+}
+
+/**
+ * Admin or the leader of the target team. Leaders cannot set a contract leave override (kept / null).
+ * An optional initial password creates the member's login (username = email) in the same step.
+ */
 export async function createMember(_prev: MemberFormState, formData: FormData): Promise<MemberFormState> {
-  await requireAdmin();
+  const user = await requireUser();
+  const access = memberAccess(user);
   const { data, fieldErrors, raw } = parse(formData);
   if (!data) return { ok: false, fieldErrors, values: toValues(raw) };
   if (!teamExists(data.teamId)) return { ok: false, fieldErrors: { teamId: "팀을 선택하세요" }, values: toValues(raw) };
+  if (!access.canManageTeam(data.teamId)) return { ok: false, error: "소속 팀에만 구성원을 추가할 수 있습니다.", values: toValues(raw) };
   if (emailTaken(data.email)) return { ok: false, fieldErrors: { email: "이미 사용 중인 이메일입니다" }, values: toValues(raw) };
+  const password = String(formData.get("password") ?? "");
+  if (password && (password.length < 8 || password.length > 100)) return { ok: false, fieldErrors: { password: "비밀번호는 8자 이상이어야 합니다" }, values: toValues(raw) };
+  if (password && db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.username, data.email)).get()) {
+    return { ok: false, fieldErrors: { email: "이 이메일로 만든 계정이 이미 있습니다" }, values: toValues(raw) };
+  }
+  const values = { ...data, annualOverride: access.canSetAnnual ? data.annualOverride : null };
 
-  db.insert(schema.members).values(data).run();
-  revalidatePath("/admin/members");
-  revalidatePath("/");
+  db.transaction((tx) => {
+    const r = tx.insert(schema.members).values(values).run();
+    if (password) {
+      tx.insert(schema.users)
+        .values({ username: data.email, email: data.email, name: data.name, role: "member", memberId: Number(r.lastInsertRowid), passwordHash: hashPassword(password) })
+        .run();
+    }
+  });
+  revalidateMembers();
   return { ok: true };
 }
 
@@ -69,16 +95,22 @@ export async function updateMember(
   _prev: MemberFormState,
   formData: FormData,
 ): Promise<MemberFormState> {
-  await requireAdmin();
+  const user = await requireUser();
+  const access = memberAccess(user);
   const { data, fieldErrors, raw } = parse(formData);
   if (!data) return { ok: false, fieldErrors, values: toValues(raw) };
   if (!teamExists(data.teamId)) return { ok: false, fieldErrors: { teamId: "팀을 선택하세요" }, values: toValues(raw) };
+  const current = db.select().from(schema.members).where(eq(schema.members.id, id)).get();
+  if (!current) return { ok: false, error: "구성원을 찾을 수 없습니다.", values: toValues(raw) };
+  if (!access.canManageTeam(current.teamId)) return { ok: false, error: "이 구성원을 수정할 권한이 없습니다.", values: toValues(raw) };
+  if (!access.isAdmin && data.teamId !== current.teamId) return { ok: false, fieldErrors: { teamId: "팀 이동은 관리자만 할 수 있습니다" }, values: toValues(raw) };
   if (emailTaken(data.email, id)) return { ok: false, fieldErrors: { email: "이미 사용 중인 이메일입니다" }, values: toValues(raw) };
+  const values = { ...data, annualOverride: access.canSetAnnual ? data.annualOverride : current.annualOverride };
 
   const result = db.transaction((tx) => {
     const r = tx
       .update(schema.members)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...values, updatedAt: new Date() })
       .where(eq(schema.members.id, id))
       .run();
     // Keep the linked login in sync so the member signs in with the new email (and the old one stops working).
@@ -94,7 +126,7 @@ export async function updateMember(
   });
   if (result.changes === 0) return { ok: false, error: "구성원을 찾을 수 없습니다.", values: toValues(raw) };
 
-  revalidatePath("/admin/members");
+  revalidateMembers();
   return { ok: true };
 }
 

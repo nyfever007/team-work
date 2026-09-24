@@ -8,6 +8,7 @@ import { LeaveBalanceCard } from '@/components/leaves/balance-card';
 import {
   LEAVE_BADGE_CLASS,
   LEAVE_LABEL,
+  REQUEST_STATUS_CLASS,
   REQUEST_STATUS_LABEL,
 } from '@/lib/leaves/types';
 import { allMembers } from '@/lib/members/queries';
@@ -169,7 +170,7 @@ export default async function RequestsPage() {
                 <TableRow
                   key={r.id}
                   className={cn(
-                    r.status === 'cancelled' && 'text-muted-foreground',
+                    (r.status === 'cancelled' || r.status === 'rejected') && 'text-muted-foreground',
                   )}
                 >
                   <TableCell className='font-mono text-xs'>
@@ -212,11 +213,7 @@ export default async function RequestsPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge
-                      variant={
-                        r.status === 'cancelled' ? 'outline' : 'secondary'
-                      }
-                    >
+                    <Badge className={REQUEST_STATUS_CLASS[r.status]}>
                       {REQUEST_STATUS_LABEL[r.status]}
                     </Badge>
                   </TableCell>

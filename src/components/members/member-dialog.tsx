@@ -16,16 +16,18 @@ type Props = {
   member?: Member;
   teams: Pick<Team, "id" | "name">[];
   trigger: ReactNode;
+  /** Admin only: contract leave override. Leaders get the company default rule. */
+  canSetAnnual?: boolean;
 };
 
-export function MemberDialog({ member, teams, trigger }: Props) {
+export function MemberDialog({ member, teams, trigger, canSetAnnual = true }: Props) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{member ? "구성원 수정" : "구성원 추가"}</DialogTitle>
           <DialogDescription>
@@ -33,7 +35,7 @@ export function MemberDialog({ member, teams, trigger }: Props) {
           </DialogDescription>
         </DialogHeader>
         {/* Mounted only while open so form state resets each time. */}
-        {open && <MemberForm member={member} teams={teams} onSaved={close} />}
+        {open && <MemberForm member={member} teams={teams} onSaved={close} canSetAnnual={canSetAnnual} />}
       </DialogContent>
     </Dialog>
   );

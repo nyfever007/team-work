@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
+import { MotionProvider } from "@/components/motion";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -22,7 +23,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="ko" className={`${pretendard.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-background text-foreground break-keep">
-        <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
+        <MotionProvider>
+          <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
+        </MotionProvider>
         <Toaster />
       </body>
     </html>

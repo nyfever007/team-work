@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
+import { eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/dal";
+import { db, schema } from "@/lib/db";
 import { addDays, addMonths, daysInMonth, formatKoDate, formatKoMonth, isValidKey, isValidMonth, monthGrid, monthOf, todayKey, weekStartOf } from "@/lib/dates";
-import { allMembers, allTeams } from "@/lib/members/queries";
+import { allMembers, allTeams, memberById } from "@/lib/members/queries";
 import { milestoneAccess } from "@/lib/milestones/permissions";
 import { milestoneById, milestoneUpdatesFor, milestonesInRange } from "@/lib/milestones/queries";
 import { monthlyGoalsForMilestone, weeklyItemsForMilestone } from "@/lib/plans/queries";
@@ -23,6 +25,10 @@ const BASE = "/team/milestones";
 
 const DEFAULT_WEEKS = 12;
 const DEFAULT_BACK_WEEKS = 3;
+
+function userName(id: number) {
+  return db.select({ name: schema.users.name }).from(schema.users).where(eq(schema.users.id, id)).get()?.name ?? null;
+}
 
 export default async function MilestonesPage({ searchParams }: PageProps<"/team/milestones">) {
   const user = await requireUser();
@@ -54,8 +60,12 @@ export default async function MilestonesPage({ searchParams }: PageProps<"/team/
   };
 
   const access = milestoneAccess(user);
-  const members = allMembers();
-  const teams = allTeams().map((t) => ({ id: t.id, name: t.name }));
+  // Each team sees only its own milestones; admin sees all.
+  const isAdmin = user.role === "admin";
+  const myTeamId = user.memberId != null ? memberById(user.memberId)?.teamId ?? null : null;
+  const inScope = (teamId: number) => isAdmin || teamId === myTeamId;
+  const members = allMembers().filter((m) => inScope(m.teamId));
+  const teams = allTeams().filter((t) => inScope(t.id)).map((t) => ({ id: t.id, name: t.name }));
   const memberName = new Map(members.map((m) => [m.id, m.name]));
   const grid = monthGrid(month);
   const calFrom = grid[0][0];
@@ -64,14 +74,18 @@ export default async function MilestonesPage({ searchParams }: PageProps<"/team/
   const rangeTo = view === "calendar" ? calTo : to;
   const holidays = loadHolidays(rangeFrom, rangeTo);
 
-  const all = milestonesInRange(rangeFrom, rangeTo);
+  // Proposals are visible to everyone (dashed); rejected ones only to their proposer and approvers.
+  const all = milestonesInRange(rangeFrom, rangeTo, { includeUnapproved: true }).filter((m) => inScope(m.teamId)).filter((m) => m.approval !== "rejected" || m.createdBy === user.id || access.canApprove(m));
   const visible = hideDone ? all.filter((m) => m.status !== "done") : all;
-  const counts = all.reduce<Record<MilestoneStatus, number>>(
+  const pendingCount = all.filter((m) => m.approval === "pending").length;
+  const counts = all.filter((m) => m.approval === "approved").reduce<Record<MilestoneStatus, number>>(
     (acc, m) => ((acc[m.status] += 1), acc),
     { planned: 0, in_progress: 0, done: 0, on_hold: 0 },
   );
 
-  const selected = Number.isInteger(selectedId) && selectedId > 0 ? milestoneById(selectedId) : undefined;
+  const found = Number.isInteger(selectedId) && selectedId > 0 ? milestoneById(selectedId) : undefined;
+  const selected = found && inScope(found.teamId) && (found.approval !== "rejected" || found.createdBy === user.id || access.canApprove(found)) ? found : undefined;
+  const proposer = selected?.createdBy != null ? userName(selected.createdBy) : null;
   const updates = selected ? milestoneUpdatesFor(selected.id) : [];
   const linkedWeekly = selected ? weeklyItemsForMilestone(selected.id) : [];
   const linkedGoals = selected ? monthlyGoalsForMilestone(selected.id) : [];
@@ -132,13 +146,14 @@ export default async function MilestonesPage({ searchParams }: PageProps<"/team/
           {(access.teamIds === "all" || access.teamIds.length > 0) && (
             <MilestoneFormDialog
               mode="create"
+              proposal={access.teamIds !== "all" && !access.teamIds.some((t) => access.autoApproves(t))}
               teams={teams}
               allowedTeamIds={access.teamIds}
               members={members.map((m) => ({ id: m.id, name: m.name, team: m.team }))}
               trigger={
                 <Button>
                   <PlusIcon className="size-4" />
-                  마일스톤 추가
+                  {access.teamIds !== "all" && !access.teamIds.some((t) => access.autoApproves(t)) ? "마일스톤 제안" : "마일스톤 추가"}
                 </Button>
               }
             />
@@ -153,6 +168,7 @@ export default async function MilestonesPage({ searchParams }: PageProps<"/team/
             {STATUS_LABEL[s]} {counts[s]}
           </span>
         ))}
+        {pendingCount > 0 && <span className="rounded border border-dashed border-brand/50 px-1.5 py-0.5 font-medium text-accent-foreground">승인 대기 {pendingCount}</span>}
         <span className="rounded bg-red-100 px-1.5 py-0.5 font-medium text-red-800">지연 = 마감 지남</span>
       </div>
 
@@ -174,6 +190,8 @@ export default async function MilestonesPage({ searchParams }: PageProps<"/team/
             ownerName={selected.ownerId != null ? memberName.get(selected.ownerId) ?? null : null}
             canManage={access.canManage(selected)}
             canUpdate={access.canUpdate(selected)}
+            canApprove={access.canApprove(selected)}
+            proposerName={proposer}
             teams={teams}
             allowedTeamIds={access.teamIds}
             members={members.map((m) => ({ id: m.id, name: m.name, team: m.team }))}

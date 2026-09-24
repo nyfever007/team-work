@@ -1,14 +1,16 @@
 import { sql } from "drizzle-orm";
 import { index, integer, real, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { LEAVE_TYPES, REQUEST_STATUSES } from "@/lib/leaves/types";
-import { MILESTONE_STATUSES } from "@/lib/milestones/types";
+import { MILESTONE_APPROVALS, MILESTONE_STATUSES } from "@/lib/milestones/types";
+import { EVALUATION_STATUSES } from "@/lib/evaluations/types";
+import { MEMBER_REVIEW_STATUSES } from "@/lib/member-reviews/types";
 import { TASK_STATUSES } from "@/lib/tasks/types";
 
 // Enum constants are defined in client-safe modules (lib/*/types.ts) so client
 // components never import this drizzle schema. Re-exported here for server code.
-export { LEAVE_TYPES, MILESTONE_STATUSES, REQUEST_STATUSES, TASK_STATUSES };
+export { LEAVE_TYPES, MEMBER_REVIEW_STATUSES, MILESTONE_APPROVALS, MILESTONE_STATUSES, REQUEST_STATUSES, TASK_STATUSES };
 export type { LeaveType, RequestStatus } from "@/lib/leaves/types";
-export type { MilestoneStatus } from "@/lib/milestones/types";
+export type { MilestoneApproval, MilestoneStatus } from "@/lib/milestones/types";
 export type { TaskStatus } from "@/lib/tasks/types";
 
 export const users = sqliteTable("users", {
@@ -139,6 +141,77 @@ export const dailyReviews = sqliteTable(
   (t) => [uniqueIndex("daily_reviews_member_date_reviewer").on(t.memberId, t.date, t.reviewerId)],
 );
 
+/**
+ * Leader's weekly evaluation of one member (AI-drafted, leader-edited). One per member per week.
+ * Members see it once shared, can mark it as read and reply.
+ */
+export const memberReviews = sqliteTable(
+  "member_reviews",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    weekStart: text("week_start").notNull(), // Monday
+    reviewerId: integer("reviewer_id").references(() => users.id, { onDelete: "set null" }),
+    reviewerName: text("reviewer_name").notNull(),
+    rating: integer("rating"), // 1-5, see RATING_LABEL
+    summary: text("summary").notNull().default(""), // 종합 평가
+    strengths: text("strengths").notNull().default(""), // 잘한 점
+    improvements: text("improvements").notNull().default(""), // 보완할 점
+    nextActions: text("next_actions").notNull().default(""), // 다음 주 할 일, one per line
+    status: text("status", { enum: MEMBER_REVIEW_STATUSES }).notNull().default("draft"),
+    model: text("model"),
+    generatedAt: integer("generated_at", { mode: "timestamp_ms" }),
+    sharedAt: integer("shared_at", { mode: "timestamp_ms" }),
+    ackAt: integer("ack_at", { mode: "timestamp_ms" }), // member marked as read
+    reply: text("reply").notNull().default(""), // member's reply
+    repliedAt: integer("replied_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [uniqueIndex("member_reviews_member_week").on(t.memberId, t.weekStart)],
+);
+
+/**
+ * 인사평가: leader's (or admin's) quarterly evaluation of a member, one per member per quarter ("2026-Q3").
+ * The yearly average is computed from finalized quarters, not stored.
+ * Private HR data — only admins and the member's team leader can read it; members never see it.
+ */
+export const memberEvaluations = sqliteTable(
+  "member_evaluations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    period: text("period").notNull(), // "2026-Q3"
+    evaluatorId: integer("evaluator_id").references(() => users.id, { onDelete: "set null" }),
+    evaluatorName: text("evaluator_name").notNull(),
+    scores: text("scores", { mode: "json" }).$type<Record<string, number>>().notNull().default({}), // criterion key → 1-10
+    total: real("total"), // average of scores, 1 decimal
+    reasons: text("reasons", { mode: "json" }).$type<Record<string, string>>().notNull().default({}), // criterion key → 근거 (AI-drafted, leader-edited)
+    aiModel: text("ai_model"),
+    aiGeneratedAt: integer("ai_generated_at", { mode: "timestamp_ms" }),
+    summary: text("summary").notNull().default(""),
+    strengths: text("strengths").notNull().default(""),
+    improvements: text("improvements").notNull().default(""),
+    status: text("status", { enum: EVALUATION_STATUSES }).notNull().default("draft"),
+    finalizedAt: integer("finalized_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [uniqueIndex("member_evaluations_member_period").on(t.memberId, t.period)],
+);
+
 /** Personal monthly goals (YYYY-MM), optionally tied to a team milestone. */
 export const monthlyGoals = sqliteTable(
   "monthly_goals",
@@ -245,7 +318,11 @@ export const leaveRequests = sqliteTable(
     usedDays: real("used_days").notNull(), // 본 신청 포함 사용 연차
     totalDays: real("total_days").notNull(), // 총 연차
     remainingDays: real("remaining_days").notNull(),
+    // submitted = 승인 대기. Calendar rows (`leaves`) are written only when approved.
     status: text("status", { enum: REQUEST_STATUSES }).notNull().default("submitted"),
+    decidedByName: text("decided_by_name"), // approver/rejecter (name snapshot, no FK)
+    decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
+    decisionNote: text("decision_note").notNull().default(""), // reject reason
     createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
@@ -278,6 +355,11 @@ export const milestones = sqliteTable("milestones", {
   progress: integer("progress").notNull().default(0), // 0-100
   ownerId: integer("owner_id").references(() => members.id, { onDelete: "set null" }),
   createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  // Approval workflow. Existing rows default to approved. No FK for the approver (name snapshot only).
+  approval: text("approval", { enum: MILESTONE_APPROVALS }).notNull().default("approved"),
+  approvalNote: text("approval_note").notNull().default(""), // reject reason
+  approvalByName: text("approval_by_name"),
+  approvalAt: integer("approval_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),
@@ -367,6 +449,8 @@ export type DailyTask = typeof dailyTasks.$inferSelect;
 export type WeeklyItem = typeof weeklyItems.$inferSelect;
 export type MonthlyGoal = typeof monthlyGoals.$inferSelect;
 export type DailyReview = typeof dailyReviews.$inferSelect;
+export type MemberReview = typeof memberReviews.$inferSelect;
+export type MemberEvaluation = typeof memberEvaluations.$inferSelect;
 export type WeeklyReport = typeof weeklyReports.$inferSelect;
 export type Leave = typeof leaves.$inferSelect;
 export type LeaveRequest = typeof leaveRequests.$inferSelect;

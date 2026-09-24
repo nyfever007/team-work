@@ -17,6 +17,7 @@ import Link from "next/link";
 import { FileTextIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CalendarHoliday, CalendarLeave, CalendarMember, Me } from "./calendar-grid";
+import { DateRangePicker } from "@/components/date-picker";
 
 type Props = {
   date: string | null;
@@ -150,13 +151,9 @@ function DayBody({ date, leaves, holiday, members, me, leaveLabel }: Omit<Props,
                   ))}
                 </NativeSelect>
               </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="start">시작일</Label>
-                <Input id="start" name="start" type="date" defaultValue={date} required />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="end">종료일</Label>
-                <Input id="end" name="end" type="date" defaultValue={date} required />
+              <div className="grid gap-1.5 sm:col-span-2">
+                <Label htmlFor="leave-range">기간</Label>
+                <DateRangePicker id="leave-range" startName="start" endName="end" defaultValue={{ start: date, end: date }} />
               </div>
             </div>
             <div className="grid gap-1.5">

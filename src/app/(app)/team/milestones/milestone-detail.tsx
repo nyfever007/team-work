@@ -1,8 +1,10 @@
-import { PencilIcon } from "lucide-react";
+import { CircleAlertIcon, HourglassIcon, PencilIcon } from "lucide-react";
 import { formatKoDate, formatTime, parseKey } from "@/lib/dates";
 import type { MilestoneUpdate, MonthlyGoal, WeeklyItem } from "@/lib/db/schema";
 import { TASK_STATUS_CLASS, TASK_STATUS_MARK } from "@/lib/tasks/types";
-import { OVERDUE_BADGE, STATUS_LABEL, STATUS_STYLE, isOverdue, type MilestoneRow } from "@/lib/milestones/types";
+import { APPROVAL_BADGE, APPROVAL_LABEL, OVERDUE_BADGE, STATUS_LABEL, STATUS_STYLE, isOverdue, type MilestoneRow } from "@/lib/milestones/types";
+import { ApprovalActions } from "@/components/approval-actions";
+import { decideMilestone } from "@/lib/milestones/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -22,6 +24,9 @@ type Props = {
   ownerName: string | null;
   canManage: boolean;
   canUpdate: boolean;
+  canApprove: boolean;
+  /** Name of the member/user who proposed it (for pending/rejected). */
+  proposerName: string | null;
   teams: { id: number; name: string }[];
   allowedTeamIds: number[] | "all";
   members: { id: number; name: string; team: string }[];
@@ -34,7 +39,7 @@ function dday(due: string, today: string) {
   return diff > 0 ? `D-${diff}` : `${-diff}일 지남`;
 }
 
-export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoals, memberName, today, ownerName, canManage, canUpdate, teams, allowedTeamIds, members, closeHref }: Props) {
+export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoals, memberName, today, ownerName, canManage, canUpdate, canApprove, proposerName, teams, allowedTeamIds, members, closeHref }: Props) {
   const style = STATUS_STYLE[m.status];
   const overdue = isOverdue(m, today);
   const totalDays = Math.round((parseKey(m.dueDate).getTime() - parseKey(m.startDate).getTime()) / 86_400_000) + 1;
@@ -44,8 +49,9 @@ export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoa
       <DialogHeader>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{m.team}</Badge>
+          {m.approval !== "approved" && <Badge className={APPROVAL_BADGE[m.approval]}>{APPROVAL_LABEL[m.approval]}</Badge>}
           <Badge className={style.badge}>{STATUS_LABEL[m.status]}</Badge>
-          {overdue && <Badge className={OVERDUE_BADGE}>지연</Badge>}
+          {overdue && m.approval === "approved" && <Badge className={OVERDUE_BADGE}>지연</Badge>}
         </div>
         <DialogTitle className="text-xl">{m.title}</DialogTitle>
         <DialogDescription>
@@ -53,6 +59,28 @@ export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoa
           {ownerName && ` · 담당 ${ownerName}`}
         </DialogDescription>
       </DialogHeader>
+
+      {m.approval === "pending" && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-brand/25 bg-brand-soft/70 px-3 py-2.5 text-sm">
+          <HourglassIcon className="size-4 shrink-0 text-brand" />
+          <span className="min-w-0 flex-1">
+            <b className="font-semibold text-accent-foreground">{proposerName ?? "구성원"}님의 제안</b>
+            <span className="block text-xs text-muted-foreground">{canApprove ? "내용을 확인하고 승인하면 팀 일정과 주간 항목 연결에 반영됩니다." : "팀장이 승인하면 팀 일정에 반영됩니다."}</span>
+          </span>
+          {canApprove && <ApprovalActions decide={decideMilestone.bind(null, m.id)} title={m.title} />}
+        </div>
+      )}
+      {m.approval === "rejected" && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-900">
+          <CircleAlertIcon className="mt-0.5 size-4 shrink-0" />
+          <span className="min-w-0 flex-1">
+            <b className="font-semibold">{m.approvalByName ?? "팀장"}님이 반려했습니다</b>
+            {m.approvalNote && <span className="block whitespace-pre-wrap">{m.approvalNote}</span>}
+            {canManage && !canApprove && <span className="mt-1 block text-xs text-red-800/80">‘수정’에서 내용을 고쳐 저장하면 다시 승인 요청됩니다.</span>}
+          </span>
+          {canApprove && <ApprovalActions decide={decideMilestone.bind(null, m.id)} title={m.title} />}
+        </div>
+      )}
 
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between text-sm">
@@ -131,7 +159,7 @@ export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoa
         {canUpdate ? (
           <UpdateForm milestoneId={m.id} currentStatus={m.status} currentProgress={m.progress} />
         ) : (
-          <p className="text-xs text-muted-foreground">이 팀 구성원만 현황을 남길 수 있습니다.</p>
+          <p className="text-xs text-muted-foreground">{m.approval !== "approved" ? "승인된 뒤에 현황을 남길 수 있습니다." : "이 팀 구성원만 현황을 남길 수 있습니다."}</p>
         )}
         <ol className="grid gap-2">
           {updates.map((u) => (

@@ -27,4 +27,4 @@ export const memberInput = z.object({
 });
 
 export type MemberInput = z.infer<typeof memberInput>;
-export type MemberFieldErrors = Partial<Record<keyof MemberInput, string>>;
+export type MemberFieldErrors = Partial<Record<keyof MemberInput | "password", string>>;

@@ -70,4 +70,10 @@ export const LEAVE_SHORT: Record<LeaveType, string> = {
 
 export const REQUEST_STATUSES = ["submitted", "approved", "rejected", "cancelled"] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
-export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = { submitted: "제출", approved: "승인", rejected: "반려", cancelled: "취소" };
+export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = { submitted: "승인 대기", approved: "승인", rejected: "반려", cancelled: "취소" };
+export const REQUEST_STATUS_CLASS: Record<RequestStatus, string> = {
+  submitted: "bg-brand-soft text-accent-foreground ring-1 ring-brand/30",
+  approved: "bg-emerald-100 text-emerald-800",
+  rejected: "bg-red-100 text-red-800",
+  cancelled: "bg-muted text-muted-foreground",
+};

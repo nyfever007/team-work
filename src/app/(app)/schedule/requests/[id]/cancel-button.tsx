@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 
-export function CancelRequestButton({ id, docNo }: { id: number; docNo: string }) {
+export function CancelRequestButton({ id, docNo, approved }: { id: number; docNo: string; approved: boolean }) {
   const [pending, start] = useTransition();
   return (
     <AlertDialog>
@@ -26,7 +26,7 @@ export function CancelRequestButton({ id, docNo }: { id: number; docNo: string }
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{docNo} 품의서를 취소할까요?</AlertDialogTitle>
-          <AlertDialogDescription>달력의 휴가 항목이 삭제되고 연차가 복구됩니다. 취소된 문서는 목록에 남습니다.</AlertDialogDescription>
+          <AlertDialogDescription>{approved ? "달력의 휴가 항목이 삭제되고 연차가 복구됩니다. 취소된 문서는 목록에 남습니다." : "승인 요청을 철회합니다. 취소된 문서는 목록에 남습니다."}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>닫기</AlertDialogCancel>

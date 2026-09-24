@@ -78,3 +78,5 @@ table.approval td.nr { border-right: none; }
 table.approval tr.tt > td { border-top: 1.5pt solid #000; }
 table.approval tr.tb > td { border-bottom: 1.5pt solid #000; }
 table.approval td[rowspan].nr { border-right: none; }
+/* 결재란 signature box filled on approval (member name). */
+table.approval td.signed { text-align: center; vertical-align: middle; font: 600 11pt var(--gothic); }

@@ -46,7 +46,7 @@ export function collectWeekSource(teamId: number, weekStart: string): WeekSource
   const logs = ids.length ? db.select().from(schema.dailyLogs).where(and(inArray(schema.dailyLogs.memberId, ids), gte(schema.dailyLogs.date, weekStart), lte(schema.dailyLogs.date, weekEnd))).all() : [];
   const reports = ids.length ? db.select().from(schema.weeklyReports).where(and(inArray(schema.weeklyReports.memberId, ids), eq(schema.weeklyReports.weekStart, weekStart))).all() : [];
   const leaves = ids.length ? db.select().from(schema.leaves).where(and(inArray(schema.leaves.memberId, ids), gte(schema.leaves.date, weekStart), lte(schema.leaves.date, weekEnd))).all() : [];
-  const milestones = db.select().from(schema.milestones).where(eq(schema.milestones.teamId, teamId)).all().filter((m) => m.startDate <= weekEnd && (m.dueDate >= addDays(weekStart, -14) || m.status !== "done"));
+  const milestones = db.select().from(schema.milestones).where(eq(schema.milestones.teamId, teamId)).all().filter((m) => m.approval === "approved" && m.startDate <= weekEnd && (m.dueDate >= addDays(weekStart, -14) || m.status !== "done"));
   const msTitle = new Map(milestones.map((m) => [m.id, m.title]));
   const updates = milestones.length
     ? db.select().from(schema.milestoneUpdates).where(and(inArray(schema.milestoneUpdates.milestoneId, milestones.map((m) => m.id)))).all().filter((u) => {

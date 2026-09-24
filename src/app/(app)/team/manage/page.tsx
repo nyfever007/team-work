@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangleIcon, FlagIcon, MessageSquareIcon } from "lucide-react";
+import { AlertTriangleIcon, FlagIcon, MessageSquareIcon, SparklesIcon } from "lucide-react";
 import { requireUser } from "@/lib/auth/dal";
 import { formatKoDate } from "@/lib/dates";
 import { allMembers, allTeams, memberById } from "@/lib/members/queries";
@@ -11,6 +11,7 @@ import { LEAVE_LABEL } from "@/lib/leaves/types";
 import { reviewerContext } from "@/lib/reviews/queries";
 import { TASK_STATUS_CLASS, TASK_STATUS_MARK } from "@/lib/tasks/types";
 import { buildInsights, type MemberInsight } from "@/lib/team/insights";
+import { defaultReviewWeek, memberReviewsForWeek } from "@/lib/member-reviews/queries";
 import { addDays } from "@/lib/dates";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,18 +35,32 @@ export default async function ManagePage() {
   const msOptions = milestonesInRange(addDays(today, -60), addDays(today, 180)).filter((m) => m.status !== "done" && m.status !== "on_hold");
 
   const flagged = insights.filter((i) => i.attention.some((a) => a.level === "warn"));
+  const reviewable = members.filter((m) => reviewer.canReview(m));
+  const reviewWeek = defaultReviewWeek(today);
+  const sharedReviews = memberReviewsForWeek(reviewable.map((m) => m.id), reviewWeek).filter((r) => r.status === "shared").length;
 
   return (
     <div className="grid gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">팀 관리</h2>
+          <h2 className="text-lg font-bold">팀 관리</h2>
           <p className="text-sm text-muted-foreground">
             {formatKoDate(today)}{!working && " · 근무일 아님"} · {teams.map((t) => t.name).join(", ")} · 구성원 {summary.members}명
           </p>
         </div>
         <Link href="/team?view=week" className="text-sm text-muted-foreground hover:underline">주간 기록 보기 →</Link>
       </div>
+
+      {reviewable.length > 0 && (
+        <Link href={`/team/reviews?week=${reviewWeek}`} className="group flex flex-wrap items-center gap-3 rounded-xl border border-brand/20 bg-gradient-to-r from-brand-soft to-card px-4 py-3 text-sm transition-shadow hover:shadow-sm">
+          <SparklesIcon className="size-4 text-brand" />
+          <span className="font-semibold text-accent-foreground">
+            {formatKoDate(reviewWeek)} 주 구성원 리뷰 {sharedReviews}/{reviewable.length}명 공유
+          </span>
+          <span className="text-muted-foreground">{sharedReviews < reviewable.length ? "AI 초안으로 빠르게 리뷰를 마무리하세요." : "이번 주기 리뷰를 모두 마쳤어요."}</span>
+          <span className="ml-auto font-medium text-accent-foreground transition-transform group-hover:translate-x-0.5">주간 리뷰 →</span>
+        </Link>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="오늘 할 일 작성" value={`${summary.planned}/${summary.members - summary.onLeave}`} hint={summary.onLeave ? `휴가 ${summary.onLeave}명 제외` : undefined} />
@@ -72,7 +87,7 @@ export default async function ManagePage() {
 
 function Stat({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "warn" }) {
   return (
-    <div className={cn("rounded-lg border px-4 py-3", tone === "warn" && "border-amber-200 bg-amber-50/60")}>
+    <div className={cn("rounded-xl border bg-card px-4 py-3 shadow-xs", tone === "warn" && "border-amber-200 bg-amber-50/60")}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-2xl font-semibold tabular-nums">{value}</div>
       {hint && <div className="text-xs text-muted-foreground">{hint}</div>}

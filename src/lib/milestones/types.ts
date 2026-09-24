@@ -21,6 +21,22 @@ export const STATUS_STYLE: Record<MilestoneStatus, { bar: string; fill: string; 
   on_hold: { bar: "bg-amber-100 text-amber-950", fill: "bg-amber-400/70", badge: "bg-amber-100 text-amber-800", dot: "bg-amber-400" },
 };
 
+/** Members propose milestones; the team leader (or admin) approves. Leader/admin-created ones start approved. */
+export const MILESTONE_APPROVALS = ["pending", "approved", "rejected"] as const;
+export type MilestoneApproval = (typeof MILESTONE_APPROVALS)[number];
+
+export const APPROVAL_LABEL: Record<MilestoneApproval, string> = {
+  pending: "승인 대기",
+  approved: "승인됨",
+  rejected: "반려",
+};
+
+export const APPROVAL_BADGE: Record<MilestoneApproval, string> = {
+  pending: "bg-brand-soft text-accent-foreground ring-1 ring-brand/30",
+  approved: "bg-emerald-100 text-emerald-800",
+  rejected: "bg-red-100 text-red-800",
+};
+
 export const OVERDUE_BADGE = "bg-red-100 text-red-800";
 
 export function isOverdue(m: { dueDate: string; status: MilestoneStatus }, today: string) {

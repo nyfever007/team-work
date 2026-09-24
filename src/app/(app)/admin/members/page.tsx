@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { LeaderBadge } from "@/components/leader-badge";
 import { AccountDialog } from "./account-dialog";
 import { DeleteMemberButton } from "./delete-member-button";
-import { MemberDialog } from "./member-dialog";
+import { MemberDialog } from "@/components/members/member-dialog";
 
 export const metadata: Metadata = { title: "구성원" };
 

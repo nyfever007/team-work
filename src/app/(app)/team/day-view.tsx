@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, eq, inArray } from "drizzle-orm";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { SafeUser } from "@/lib/auth/session";
-import { allMembers } from "@/lib/members/queries";
+import { teamScopedMembers } from "@/lib/members/access";
 import { addDays, formatKoDate } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
 import { LEAVE_BADGE_CLASS, LEAVE_LABEL } from "@/lib/leaves/types";
@@ -22,7 +22,7 @@ export function DayView({ user, date, today, toggle }: { user: SafeUser; date: s
   const working = isWorkingDay(date, holidays);
   const holidayName = holidays.get(date);
 
-  const members = allMembers();
+  const members = teamScopedMembers(user);
   const ids = members.map((m) => m.id);
   const logs = ids.length ? db.select().from(schema.dailyLogs).where(and(eq(schema.dailyLogs.date, date), inArray(schema.dailyLogs.memberId, ids))).all() : [];
   const leaves = ids.length ? db.select().from(schema.leaves).where(and(eq(schema.leaves.date, date), inArray(schema.leaves.memberId, ids))).all() : [];
@@ -43,6 +43,7 @@ export function DayView({ user, date, today, toggle }: { user: SafeUser; date: s
         <div>
           <h2 className="text-lg font-semibold">하루 현황</h2>
           <p className="text-sm text-muted-foreground">
+            {user.role !== "admin" && members[0] && `${members[0].team} · `}
             {formatKoDate(date)}
             {date === today && " · 오늘"}
             {!working && <span className="ml-1 text-amber-700">· 근무일 아님{holidayName ? ` (${holidayName})` : ""}</span>}

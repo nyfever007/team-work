@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { addDays, parseKey } from "@/lib/dates";
-import { OVERDUE_BADGE, STATUS_LABEL, STATUS_STYLE, isOverdue, type MilestoneRow } from "@/lib/milestones/types";
+import { APPROVAL_BADGE, APPROVAL_LABEL, OVERDUE_BADGE, STATUS_LABEL, STATUS_STYLE, isOverdue, type MilestoneRow } from "@/lib/milestones/types";
 import type { HolidayMap } from "@/lib/workdays";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -87,7 +87,8 @@ export function Gantt({ from, weeks, today, holidays, milestones, memberName, hr
               const left = pct(clipStart);
               const width = ((daysBetween(clipStart, clipEnd) + 1) / totalDays) * 100;
               const owner = m.ownerId != null ? memberName.get(m.ownerId) : undefined;
-              const label = `${m.title} · ${STATUS_LABEL[m.status]} ${m.progress}%`;
+              const proposal = m.approval !== "approved";
+              const label = `${m.title} · ${proposal ? APPROVAL_LABEL[m.approval] : `${STATUS_LABEL[m.status]} ${m.progress}%`}`;
               return (
                 <div key={m.id} className="flex border-b last:border-b-0 hover:bg-accent/40">
                   <Link href={hrefFor(m.id)} scroll={false} className="flex shrink-0 flex-col justify-center gap-0.5 border-r px-3 py-2" style={{ width: LEFT_W }}>
@@ -100,7 +101,8 @@ export function Gantt({ from, weeks, today, holidays, milestones, memberName, hr
                       <span className="tabular-nums">
                         {m.startDate.slice(5).replace("-", "/")} ~ {m.dueDate.slice(5).replace("-", "/")}
                       </span>
-                      {overdue && <Badge className={cn("h-4 px-1 text-[10px]", OVERDUE_BADGE)}>지연</Badge>}
+                      {overdue && !proposal && <Badge className={cn("h-4 px-1 text-[10px]", OVERDUE_BADGE)}>지연</Badge>}
+                      {proposal && <Badge className={cn("h-4 px-1 text-[10px]", APPROVAL_BADGE[m.approval])}>{APPROVAL_LABEL[m.approval]}</Badge>}
                     </div>
                   </Link>
                   <div className="relative flex-1 py-2">
@@ -126,14 +128,17 @@ export function Gantt({ from, weeks, today, holidays, milestones, memberName, hr
                         style.bar,
                         m.startDate < from && "rounded-l-none",
                         m.dueDate > to && "rounded-r-none",
-                        overdue && "ring-red-400/70",
+                        overdue && !proposal && "ring-red-400/70",
+                        proposal && "border-2 border-dashed bg-card/80 shadow-none ring-0",
+                        m.approval === "pending" && "border-brand/50 text-accent-foreground",
+                        m.approval === "rejected" && "border-red-300 text-red-800 opacity-70",
                       )}
                       style={{ left: `${left}%`, width: `max(${width}%, 6px)` }}
                     >
-                      <span className={cn("absolute inset-y-0 left-0", style.fill)} style={{ width: `${m.progress}%` }} />
+                      {!proposal && <span className={cn("absolute inset-y-0 left-0", style.fill)} style={{ width: `${m.progress}%` }} />}
                       <span className="relative flex h-full items-center gap-1 truncate px-2 font-medium">
                         {width > 9 ? m.title : ""}
-                        {width > 14 && <span className="opacity-70">{m.progress}%</span>}
+                        {width > 14 && <span className="opacity-70">{proposal ? APPROVAL_LABEL[m.approval] : `${m.progress}%`}</span>}
                       </span>
                     </Link>
                   </div>

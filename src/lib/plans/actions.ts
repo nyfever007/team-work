@@ -21,9 +21,11 @@ function revalidate() {
 const fail = (e: unknown, fallback: string): PlanResult => ({ ok: false, error: e instanceof Error ? e.message : fallback });
 const cleanTitle = (t: string) => t.replace(/\s+/g, " ").trim();
 
-function checkMilestone(id: number | null) {
+/** Linkable milestone: approved and owned by the member's own team. */
+function checkMilestone(id: number | null, memberId: number) {
   if (id == null) return true;
-  return !!db.select({ id: schema.milestones.id }).from(schema.milestones).where(eq(schema.milestones.id, id)).get();
+  const ms = db.select({ approval: schema.milestones.approval, teamId: schema.milestones.teamId }).from(schema.milestones).where(eq(schema.milestones.id, id)).get();
+  return ms?.approval === "approved" && ms.teamId === memberById(memberId)?.teamId;
 }
 
 // ---------------- weekly items ----------------
@@ -67,7 +69,7 @@ export async function assignWeeklyItem(memberId: number, weekStart: string, titl
     const clean = cleanTitle(title);
     if (!clean) return { ok: false, error: "항목을 입력하세요." };
     if (clean.length > 200) return { ok: false, error: "200자 이내로 입력하세요." };
-    if (!checkMilestone(milestoneId ?? null)) return { ok: false, error: "마일스톤을 찾을 수 없습니다." };
+    if (!checkMilestone(milestoneId ?? null, memberId)) return { ok: false, error: "마일스톤을 찾을 수 없거나 아직 승인되지 않았습니다. 소속 팀의 승인된 마일스톤만 연결할 수 있습니다." };
     const row = db.select({ maxPos: max(schema.weeklyItems.position) }).from(schema.weeklyItems).where(and(eq(schema.weeklyItems.memberId, memberId), eq(schema.weeklyItems.weekStart, weekStart))).get();
     const r = db.insert(schema.weeklyItems).values({ memberId, weekStart, title: clean, milestoneId: milestoneId ?? null, assignedBy: user.id, assignedByName: user.name, position: (row?.maxPos ?? 0) + 1 }).run();
     revalidate();
@@ -87,7 +89,7 @@ export async function addWeeklyItem(weekStart: string, title: string, links?: { 
     if (clean.length > 200) return { ok: false, error: "200자 이내로 입력하세요." };
     const milestoneId = links?.milestoneId ?? null;
     const monthlyGoalId = links?.monthlyGoalId ?? null;
-    if (!checkMilestone(milestoneId)) return { ok: false, error: "마일스톤을 찾을 수 없습니다." };
+    if (!checkMilestone(milestoneId, memberId)) return { ok: false, error: "마일스톤을 찾을 수 없거나 아직 승인되지 않았습니다. 소속 팀의 승인된 마일스톤만 연결할 수 있습니다." };
     if (monthlyGoalId != null) {
       const g = db.select().from(schema.monthlyGoals).where(eq(schema.monthlyGoals.id, monthlyGoalId)).get();
       if (!g || g.memberId !== memberId) return { ok: false, error: "월간 목표를 찾을 수 없습니다." };
@@ -129,7 +131,7 @@ export async function setWeeklyItemStatus(id: number, status: TaskStatus): Promi
 export async function setWeeklyItemLinks(id: number, links: { milestoneId: number | null; monthlyGoalId: number | null }): Promise<PlanResult> {
   try {
     const { memberId } = await ownItem(id);
-    if (!checkMilestone(links.milestoneId)) return { ok: false, error: "마일스톤을 찾을 수 없습니다." };
+    if (!checkMilestone(links.milestoneId, memberId)) return { ok: false, error: "마일스톤을 찾을 수 없거나 아직 승인되지 않았습니다. 소속 팀의 승인된 마일스톤만 연결할 수 있습니다." };
     if (links.monthlyGoalId != null) {
       const g = db.select().from(schema.monthlyGoals).where(eq(schema.monthlyGoals.id, links.monthlyGoalId)).get();
       if (!g || g.memberId !== memberId) return { ok: false, error: "월간 목표를 찾을 수 없습니다." };
@@ -186,7 +188,7 @@ export async function addMonthlyGoal(month: string, title: string, milestoneId?:
     const clean = cleanTitle(title);
     if (!clean) return { ok: false, error: "목표를 입력하세요." };
     if (clean.length > 200) return { ok: false, error: "200자 이내로 입력하세요." };
-    if (!checkMilestone(milestoneId ?? null)) return { ok: false, error: "마일스톤을 찾을 수 없습니다." };
+    if (!checkMilestone(milestoneId ?? null, memberId)) return { ok: false, error: "마일스톤을 찾을 수 없거나 아직 승인되지 않았습니다. 소속 팀의 승인된 마일스톤만 연결할 수 있습니다." };
     const row = db.select({ maxPos: max(schema.monthlyGoals.position) }).from(schema.monthlyGoals).where(and(eq(schema.monthlyGoals.memberId, memberId), eq(schema.monthlyGoals.month, month))).get();
     const r = db.insert(schema.monthlyGoals).values({ memberId, month, title: clean, milestoneId: milestoneId ?? null, position: (row?.maxPos ?? 0) + 1 }).run();
     revalidate();
@@ -223,8 +225,8 @@ export async function setMonthlyGoalStatus(id: number, status: TaskStatus): Prom
 
 export async function setMonthlyGoalMilestone(id: number, milestoneId: number | null): Promise<PlanResult> {
   try {
-    await ownGoal(id);
-    if (!checkMilestone(milestoneId)) return { ok: false, error: "마일스톤을 찾을 수 없습니다." };
+    const { memberId } = await ownGoal(id);
+    if (!checkMilestone(milestoneId, memberId)) return { ok: false, error: "마일스톤을 찾을 수 없거나 아직 승인되지 않았습니다. 소속 팀의 승인된 마일스톤만 연결할 수 있습니다." };
     db.update(schema.monthlyGoals).set({ milestoneId }).where(eq(schema.monthlyGoals.id, id)).run();
     revalidate();
     return { ok: true };

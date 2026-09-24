@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { and, gte, lte } from "drizzle-orm";
+import { and, gte, inArray, lte } from "drizzle-orm";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { requireUser } from "@/lib/auth/dal";
-import { allMembers } from "@/lib/members/queries";
+import { teamScopedMembers } from "@/lib/members/access";
 import { addMonths, daysInMonth, formatKoMonth, isValidMonth, monthGrid, monthOf, todayKey } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
 import { LEAVE_BADGE_CLASS, LEAVE_LABEL } from "@/lib/leaves/types";
@@ -21,12 +21,13 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
   const from = grid[0][0];
   const to = grid[grid.length - 1][6];
 
-  const members = allMembers();
+  // Own team's leave only (admin: everyone).
+  const members = teamScopedMembers(user);
   const nameById = new Map(members.map((m) => [m.id, m.name]));
   const leaves = db
     .select()
     .from(schema.leaves)
-    .where(and(gte(schema.leaves.date, from), lte(schema.leaves.date, to)))
+    .where(and(gte(schema.leaves.date, from), lte(schema.leaves.date, to), inArray(schema.leaves.memberId, members.length ? members.map((m) => m.id) : [-1])))
     .orderBy(schema.leaves.date, schema.leaves.id)
     .all()
     .map((l) => ({ id: l.id, date: l.date, memberId: l.memberId, memberName: nameById.get(l.memberId) ?? "?", type: l.type, note: l.note }));

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { WEEKDAY_KO, dayOfWeek, monthGrid, monthOf, parseKey } from "@/lib/dates";
-import { OVERDUE_BADGE, STATUS_LABEL, STATUS_STYLE, isOverdue, type MilestoneRow } from "@/lib/milestones/types";
+import { APPROVAL_LABEL, OVERDUE_BADGE, STATUS_LABEL, STATUS_STYLE, isOverdue, type MilestoneRow } from "@/lib/milestones/types";
 import type { HolidayMap } from "@/lib/workdays";
 import { packLanes, type TimelineItem } from "@/components/week-timeline";
 import { cn } from "@/lib/utils";
@@ -30,13 +30,18 @@ export function MilestoneCalendar({ month, today, holidays, milestones, hrefFor 
           .filter((m) => m.startDate <= we && m.dueDate >= ws)
           .map((m) => {
             const overdue = isOverdue(m, today);
+            const proposal = m.approval !== "approved";
             return {
               key: `ms:${m.id}:${ws}`,
               start: m.startDate < ws ? ws : m.startDate,
               end: m.dueDate > we ? we : m.dueDate,
-              label: `${m.title} ${m.progress}%${m.dueDate >= ws && m.dueDate <= we ? " ◆" : ""}`,
-              title: `${m.team} · ${m.title} · ${STATUS_LABEL[m.status]} ${m.progress}% · ${m.startDate} ~ ${m.dueDate}${overdue ? " · 지연" : ""}`,
-              color: { bar: cn(STATUS_STYLE[m.status].bar, overdue && "ring-1 ring-red-400") },
+              label: `${proposal ? `[${APPROVAL_LABEL[m.approval]}] ` : ""}${m.title}${proposal ? "" : ` ${m.progress}%`}${m.dueDate >= ws && m.dueDate <= we ? " ◆" : ""}`,
+              title: `${m.team} · ${m.title} · ${proposal ? APPROVAL_LABEL[m.approval] : `${STATUS_LABEL[m.status]} ${m.progress}%`} · ${m.startDate} ~ ${m.dueDate}${overdue && !proposal ? " · 지연" : ""}`,
+              color: {
+                bar: proposal
+                  ? cn("border border-dashed bg-card shadow-none", m.approval === "pending" ? "border-brand/50 text-accent-foreground" : "border-red-300 text-red-800 opacity-70")
+                  : cn(STATUS_STYLE[m.status].bar, overdue && "ring-1 ring-red-400"),
+              },
               href: hrefFor(m.id),
             };
           });

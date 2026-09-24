@@ -13,8 +13,9 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { DatePicker, DateRangePicker } from "@/components/date-picker";
 
-type MemberInfo = { id: number; name: string; team: string; position: string; totalDays: number; annualTotal: number; usedDays: number; sickUsed: number; sickAllowance: number; period: string; yearIndex: number };
+type MemberInfo = { id: number; name: string; team: string; position: string; totalDays: number; annualTotal: number; usedDays: number; sickUsed: number; sickAllowance: number; period: string; yearIndex: number; pendingAnnual: number; pendingSick: number };
 
 type Props = {
   members: MemberInfo[];
@@ -45,13 +46,14 @@ export function RequestForm({ members, defaultMemberId, defaultDate, today, holi
     const dates = requestDates(type, start, e, holidaySet);
     const days = requestDays(type, dates);
     const cost = requestAnnualCost(type, dates);
-    const used = member.usedDays + cost;
+    // Days held by other requests still waiting for approval count against the balance too (server does the same).
+    const used = member.usedDays + member.pendingAnnual + cost;
     return { dates, days, cost, used, remaining: member.totalDays - used };
   }, [type, start, end, single, holidaySet, member]);
 
   useEffect(() => {
     if (state?.ok) {
-      toast.success("품의서를 저장했습니다. 달력에 반영되었습니다.");
+      toast.success(state.approved ? "품의서를 저장했습니다. 달력에 반영되었습니다." : "품의서를 제출했습니다. 팀장이 승인하면 달력에 반영됩니다.");
       router.push(`/schedule/requests/${state.id}`);
     }
   }, [state, router]);
@@ -89,16 +91,12 @@ export function RequestForm({ members, defaultMemberId, defaultDate, today, holi
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="startDate">{single ? "신청일자" : "시작일"}</Label>
-            <Input id="startDate" name="startDate" type="date" value={start} onChange={(e) => { setStart(e.target.value); if (end < e.target.value) setEnd(e.target.value); }} required />
-          </div>
-          {!single && (
-            <div className="grid gap-1.5">
-              <Label htmlFor="endDate">종료일</Label>
-              <Input id="endDate" name="endDate" type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} required />
-            </div>
+        <div className="grid gap-1.5 sm:max-w-md">
+          <Label htmlFor="period">{single ? "신청일자" : "기간"}</Label>
+          {single ? (
+            <DatePicker id="period" name="startDate" value={start} onChange={(k) => { setStart(k); setEnd(k); }} />
+          ) : (
+            <DateRangePicker id="period" startName="startDate" endName="endDate" value={{ start, end: end < start ? start : end }} onChange={(r) => { setStart(r.start); setEnd(r.end); }} />
           )}
         </div>
 
@@ -142,7 +140,7 @@ export function RequestForm({ members, defaultMemberId, defaultDate, today, holi
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => router.back()} disabled={pending}>취소</Button>
-          <Button type="submit" disabled={pending || !calc || calc.dates.length === 0 || (calc.cost > 0 && calc.remaining < 0) || (type === "sick" && member.sickUsed + calc.days > member.sickAllowance)}>
+          <Button type="submit" disabled={pending || !calc || calc.dates.length === 0 || (calc.cost > 0 && calc.remaining < 0) || (type === "sick" && member.sickUsed + member.pendingSick + calc.days > member.sickAllowance)}>
             {pending && <Loader2Icon className="size-4 animate-spin" />}
             저장
           </Button>
@@ -160,12 +158,13 @@ export function RequestForm({ members, defaultMemberId, defaultDate, today, holi
         <Row k="연차 차감" v={calc ? `${formatDays(calc.cost)}일` : "—"} muted={!!calc && calc.cost === 0} />
         <Row k="잔여일수" v={calc ? `${formatDays(calc.remaining)}일 (${formatDays(calc.used)}일 / ${formatDays(member.totalDays)}일)` : "—"} warn={!!calc && calc.remaining < 0} />
         {type === "sick" && calc && (
-          <Row k="병가 잔여" v={`${formatDays(member.sickAllowance - member.sickUsed - calc.days)}일 (${formatDays(member.sickUsed + calc.days)}일 / ${member.sickAllowance}일)`} warn={member.sickUsed + calc.days > member.sickAllowance} />
+          <Row k="병가 잔여" v={`${formatDays(member.sickAllowance - member.sickUsed - member.pendingSick - calc.days)}일 (${formatDays(member.sickUsed + member.pendingSick + calc.days)}일 / ${member.sickAllowance}일)`} warn={member.sickUsed + member.pendingSick + calc.days > member.sickAllowance} />
         )}
         <p className="text-xs text-muted-foreground">연차 연도(입사일 기준 {member.yearIndex}년차): {member.period}{member.totalDays < member.annualTotal && ` · 연간 ${formatDays(member.annualTotal)}일 중 ${formatDays(member.totalDays)}일 발생`}</p>
         {calc && calc.dates.length === 0 && <p className="text-xs text-destructive">선택한 기간에 근무일이 없습니다.</p>}
         {calc && calc.dates.length > 0 && !single && calc.dates.length < span && <p className="text-xs text-muted-foreground">주말·휴무일 {span - calc.dates.length}일은 제외됩니다.</p>}
-        <p className="text-xs text-muted-foreground">잔여일수 = 현재 사용 가능한 연차 − (본 신청 포함 사용 연차). {LEAVE_COST[type] === 0 && "이 구분은 연차를 차감하지 않습니다."}</p>
+        {member.pendingAnnual + member.pendingSick > 0 && <p className="text-xs text-accent-foreground">승인 대기 중인 다른 품의 {formatDays(member.pendingAnnual + member.pendingSick)}일이 포함되어 계산됩니다.</p>}
+        <p className="text-xs text-muted-foreground">잔여일수 = 현재 사용 가능한 연차 − (승인 대기·본 신청 포함 사용 연차). {LEAVE_COST[type] === 0 && "이 구분은 연차를 차감하지 않습니다."}</p>
       </aside>
     </form>
   );

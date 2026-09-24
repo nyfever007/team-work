@@ -11,7 +11,7 @@ export function openAIModel() {
 }
 
 /** Minimal Chat Completions call (no SDK). Throws with a readable Korean message on failure. */
-export async function chatCompletion(messages: { role: "system" | "user"; content: string }[], opts?: { model?: string; maxTokens?: number }): Promise<{ content: string; model: string }> {
+export async function chatCompletion(messages: { role: "system" | "user"; content: string }[], opts?: { model?: string; maxTokens?: number; json?: boolean }): Promise<{ content: string; model: string }> {
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) throw new Error("OPENAI_API_KEY가 설정되지 않았습니다. .env에 키를 추가하고 서버를 재시작하세요.");
   const base = (process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -24,7 +24,7 @@ export async function chatCompletion(messages: { role: "system" | "user"; conten
     res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model, messages, temperature: 0.4, max_tokens: opts?.maxTokens ?? 2000 }),
+      body: JSON.stringify({ model, messages, temperature: 0.4, max_tokens: opts?.maxTokens ?? 2000, ...(opts?.json ? { response_format: { type: "json_object" } } : {}) }),
       signal: controller.signal,
     });
   } catch (e) {

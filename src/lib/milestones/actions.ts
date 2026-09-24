@@ -14,8 +14,8 @@ export type MilestoneFormState =
   | undefined;
 
 function revalidate() {
-  revalidatePath("/team/milestones");
-  revalidatePath("/");
+  // Pending approvals show up in the header badge and on 오늘, so refresh the whole tree.
+  revalidatePath("/", "layout");
 }
 
 function readForm(formData: FormData) {
@@ -42,6 +42,7 @@ function readForm(formData: FormData) {
   else if (!Number.isInteger(progress) || progress < 0 || progress > 100) error = "진행률은 0~100 사이 정수로 입력하세요.";
   const ownerId = raw.ownerId ? Number(raw.ownerId) : null;
   if (!error && ownerId != null && !Number.isInteger(ownerId)) error = "담당자가 올바르지 않습니다.";
+  if (!error && ownerId != null && db.select({ teamId: schema.members.teamId }).from(schema.members).where(eq(schema.members.id, ownerId)).get()?.teamId !== teamId) error = "담당자는 같은 팀 구성원만 지정할 수 있습니다.";
   return {
     raw,
     error,
@@ -63,19 +64,25 @@ export async function createMilestone(_prev: MilestoneFormState, formData: FormD
     const user = await requireUser();
     const { raw, error, data } = readForm(formData);
     if (error) return { ok: false, error, values: raw };
-    if (!milestoneAccess(user).canCreateFor(data.teamId)) return { ok: false, error: "이 팀의 마일스톤을 만들 권한이 없습니다.", values: raw };
+    const access = milestoneAccess(user);
+    if (!access.canCreateFor(data.teamId)) return { ok: false, error: "소속 팀의 마일스톤만 만들 수 있습니다.", values: raw };
     if (!db.select({ id: schema.teams.id }).from(schema.teams).where(eq(schema.teams.id, data.teamId)).get()) return { ok: false, error: "팀을 찾을 수 없습니다.", values: raw };
+    const approved = access.autoApproves(data.teamId);
+    const now = new Date();
 
     const id = db.transaction((tx) => {
-      const r = tx.insert(schema.milestones).values({ ...data, createdBy: user.id }).run();
+      const r = tx
+        .insert(schema.milestones)
+        .values({ ...data, createdBy: user.id, approval: approved ? "approved" : "pending", approvalByName: approved ? user.name : null, approvalAt: approved ? now : null })
+        .run();
       const milestoneId = Number(r.lastInsertRowid);
       tx.insert(schema.milestoneUpdates)
-        .values({ milestoneId, authorId: user.id, authorName: user.name, note: "마일스톤을 만들었습니다.", status: data.status, progress: data.progress })
+        .values({ milestoneId, authorId: user.id, authorName: user.name, note: approved ? "마일스톤을 만들었습니다." : "마일스톤을 제안했습니다. 팀장 승인을 기다립니다.", status: data.status, progress: data.progress })
         .run();
       return milestoneId;
     });
     revalidate();
-    return { ok: true, id, message: "마일스톤을 만들었습니다." };
+    return { ok: true, id, message: approved ? "마일스톤을 만들었습니다." : "마일스톤을 제안했습니다. 팀장이 승인하면 팀 일정에 반영됩니다." };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "처리에 실패했습니다." };
   }
@@ -86,20 +93,27 @@ export async function updateMilestone(id: number, _prev: MilestoneFormState, for
     const user = await requireUser();
     const existing = db.select().from(schema.milestones).where(eq(schema.milestones.id, id)).get();
     if (!existing) return { ok: false, error: "마일스톤을 찾을 수 없습니다." };
-    if (!milestoneAccess(user).canManage(existing)) return { ok: false, error: "수정 권한이 없습니다." };
+    const access = milestoneAccess(user);
+    if (!access.canManage(existing)) return { ok: false, error: "수정 권한이 없습니다." };
     const { raw, error, data } = readForm(formData);
     if (error) return { ok: false, error, values: raw };
+    if (data.teamId !== existing.teamId && !access.canCreateFor(data.teamId)) return { ok: false, error: "그 팀으로 옮길 권한이 없습니다.", values: raw };
+    // A proposer fixing a rejected proposal sends it back for approval.
+    const resubmit = existing.approval === "rejected" && !access.canApprove({ teamId: data.teamId });
 
     db.transaction((tx) => {
-      tx.update(schema.milestones).set({ ...data, updatedAt: new Date() }).where(eq(schema.milestones.id, id)).run();
-      if (existing.status !== data.status || existing.progress !== data.progress) {
+      tx.update(schema.milestones)
+        .set({ ...data, updatedAt: new Date(), ...(resubmit ? { approval: "pending" as const, approvalNote: "" } : {}) })
+        .where(eq(schema.milestones.id, id))
+        .run();
+      if (resubmit || existing.status !== data.status || existing.progress !== data.progress) {
         tx.insert(schema.milestoneUpdates)
-          .values({ milestoneId: id, authorId: user.id, authorName: user.name, note: "정보를 수정했습니다.", status: data.status, progress: data.progress })
+          .values({ milestoneId: id, authorId: user.id, authorName: user.name, note: resubmit ? "반려 내용을 반영해 다시 제안했습니다." : "정보를 수정했습니다.", status: data.status, progress: data.progress })
           .run();
       }
     });
     revalidate();
-    return { ok: true, id, message: "마일스톤을 수정했습니다." };
+    return { ok: true, id, message: resubmit ? "수정해서 다시 제안했습니다." : "마일스톤을 수정했습니다." };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "처리에 실패했습니다." };
   }
@@ -127,6 +141,7 @@ export async function addMilestoneUpdate(id: number, _prev: UpdateFormState, for
     const user = await requireUser();
     const existing = db.select().from(schema.milestones).where(eq(schema.milestones.id, id)).get();
     if (!existing) return { ok: false, error: "마일스톤을 찾을 수 없습니다." };
+    if (existing.approval !== "approved") return { ok: false, error: "승인된 마일스톤에만 현황을 남길 수 있습니다." };
     if (!milestoneAccess(user).canUpdate(existing)) return { ok: false, error: "이 팀 구성원만 현황을 남길 수 있습니다." };
 
     const note = String(formData.get("note") ?? "").replace(/\r\n/g, "\n").trim();
@@ -144,6 +159,38 @@ export async function addMilestoneUpdate(id: number, _prev: UpdateFormState, for
     });
     revalidate();
     return { ok: true, message: "현황을 남겼습니다." };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "처리에 실패했습니다." };
+  }
+}
+
+export type ApprovalResult = { ok: true; message: string } | { ok: false; error: string };
+
+/** Team leader / admin approves or rejects a proposal. Rejecting needs a short reason for the proposer. */
+export async function decideMilestone(id: number, decision: "approve" | "reject", note = ""): Promise<ApprovalResult> {
+  try {
+    const user = await requireUser();
+    const existing = db.select().from(schema.milestones).where(eq(schema.milestones.id, id)).get();
+    if (!existing) return { ok: false, error: "마일스톤을 찾을 수 없습니다." };
+    if (!milestoneAccess(user).canApprove(existing)) return { ok: false, error: "이 팀의 마일스톤을 승인할 권한이 없습니다." };
+    if (existing.approval === "approved") return { ok: false, error: "이미 승인된 마일스톤입니다." };
+    const reason = note.replace(/\r\n/g, "\n").trim();
+    if (decision === "reject" && !reason) return { ok: false, error: "반려 사유를 입력하세요." };
+    if (reason.length > 500) return { ok: false, error: "사유는 500자 이내로 입력하세요." };
+
+    const now = new Date();
+    const approve = decision === "approve";
+    db.transaction((tx) => {
+      tx.update(schema.milestones)
+        .set({ approval: approve ? "approved" : "rejected", approvalNote: approve ? "" : reason, approvalByName: user.name, approvalAt: now, updatedAt: now })
+        .where(eq(schema.milestones.id, id))
+        .run();
+      tx.insert(schema.milestoneUpdates)
+        .values({ milestoneId: id, authorId: user.id, authorName: user.name, note: approve ? `승인했습니다.${reason ? ` ${reason}` : ""}` : `반려했습니다: ${reason}`, status: existing.status, progress: existing.progress })
+        .run();
+    });
+    revalidate();
+    return { ok: true, message: approve ? "마일스톤을 승인했습니다." : "반려했습니다. 제안자가 수정 후 다시 제안할 수 있습니다." };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "처리에 실패했습니다." };
   }

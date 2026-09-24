@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth/dal";
 import { memberById } from "@/lib/members/queries";
+import { unreadReviewCount } from "@/lib/member-reviews/queries";
 import { SubNav } from "@/components/layout/sub-nav";
 
 export default async function MyLayout({ children }: LayoutProps<"/my">) {
@@ -14,6 +15,7 @@ export default async function MyLayout({ children }: LayoutProps<"/my">) {
           { href: "/my/today", label: "오늘" },
           { href: "/my/week", label: "이번 주" },
           { href: "/my/month", label: "이번 달" },
+          ...(me ? [{ href: "/my/feedback", label: "피드백", badge: unreadReviewCount(me.id) }] : []),
           { href: "/my/history", label: "기록" },
           ...(canMeet ? [{ href: "/my/meeting", label: "미팅 노트" }] : []),
         ]}

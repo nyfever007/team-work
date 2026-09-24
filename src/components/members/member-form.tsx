@@ -11,14 +11,16 @@ import { DialogClose, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { DatePicker } from "@/components/date-picker";
 
 type Props = {
   member?: Member;
   teams: Pick<Team, "id" | "name">[];
   onSaved: () => void;
+  canSetAnnual?: boolean;
 };
 
-export function MemberForm({ member, teams, onSaved }: Props) {
+export function MemberForm({ member, teams, onSaved, canSetAnnual = true }: Props) {
   const action = member ? updateMember.bind(null, member.id) : createMember;
   const [state, formAction, pending] = useActionState<MemberFormState, FormData>(action, undefined);
 
@@ -84,9 +86,18 @@ export function MemberForm({ member, teams, onSaved }: Props) {
       </div>
       <div className="grid gap-2">
         <Label htmlFor="joinedAt">입사일</Label>
-        <Input id="joinedAt" name="joinedAt" type="date" value={joined} onChange={(e) => setJoined(e.target.value)} required />
+        <DatePicker id="joinedAt" name="joinedAt" value={joined} onChange={setJoined} dropdown placeholder="입사일 선택" aria-invalid={!!errors.joinedAt} />
         <FieldError message={errors.joinedAt} />
       </div>
+      {!member && (
+        <div className="grid gap-2">
+          <Label htmlFor="password">초기 비밀번호 (선택)</Label>
+          <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} placeholder="8자 이상" />
+          <p className="text-xs text-muted-foreground">입력하면 이메일로 로그인하는 계정을 함께 만듭니다. 비밀번호는 본인에게 따로 전달하세요.</p>
+          <FieldError message={errors.password} />
+        </div>
+      )}
+      {canSetAnnual ? (
       <div className="grid gap-2 rounded-md border p-3">
         <Label>연차</Label>
         <input type="hidden" name="annualMode" value={annualMode} />
@@ -113,6 +124,12 @@ export function MemberForm({ member, teams, onSaved }: Props) {
           </div>
         )}
       </div>
+      ) : (
+        <>
+          <input type="hidden" name="annualMode" value="auto" />
+          <p className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">연차는 회사 기본 규칙(입사일 기준)으로 계산됩니다. 계약에 따른 별도 연차는 관리자에게 요청하세요.</p>
+        </>
+      )}
       {state && !state.ok && state.error && (
         <p role="alert" className="text-sm text-destructive">
           {state.error}
