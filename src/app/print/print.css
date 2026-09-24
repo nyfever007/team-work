@@ -80,3 +80,57 @@ table.approval tr.tb > td { border-bottom: 1.5pt solid #000; }
 table.approval td[rowspan].nr { border-right: none; }
 /* 결재란 signature box filled on approval (member name). */
 table.approval td.signed { text-align: center; vertical-align: middle; font: 600 11pt var(--gothic); }
+
+/* 시간외(휴일) 근무신청서 — Word: margins 1134/1134/851/1134 dxa, body style 표머리 (굴림), lines exact 20pt. */
+.ot-sheet { padding: 20mm 20mm 15mm 20mm; font-family: var(--gothic); font-size: 10pt; }
+.ot-title { text-align: center; font-size: 18pt; font-weight: 700; text-decoration: underline; text-underline-offset: 4px; margin: 2mm 0 8mm; letter-spacing: 0.02em; }
+.ot-h { font-size: 11pt; font-weight: 700; line-height: 18pt; margin: 0; }
+.ot-gap { margin-top: 20pt; }
+.ot-items { list-style: none; margin: 0; padding: 0 0 0 9mm; line-height: 20pt; }
+.ot-items li { display: flex; align-items: baseline; }
+.ot-items .n { display: inline-block; width: 6mm; font-size: 9pt; }
+.ot-items .k { display: inline-block; min-width: 15mm; }
+.ot-items .v { margin-left: 2mm; }
+.ot-items li.sub { padding-left: 12mm; }
+.ot-reason { margin: 6mm 0 0; min-height: 62mm; line-height: 20pt; white-space: pre-wrap; word-break: keep-all; }
+.ot-confirm { margin: 8mm 0 0; padding-left: 8mm; line-height: 20pt; }
+.ot-date { margin: 8mm 0 0; text-align: center; font-family: var(--serif); font-size: 12pt; line-height: 20pt; }
+.ot-sign { margin: 8mm 7mm 0 0; display: grid; justify-content: end; row-gap: 8mm; font-family: var(--serif); font-size: 12pt; }
+.ot-sign > div { display: grid; grid-template-columns: 22mm 48mm 16mm; align-items: baseline; }
+.ot-sign .role { letter-spacing: 0.1em; }
+.ot-sign .name { text-align: center; font-family: var(--gothic); font-weight: 600; }
+.ot-sign .mark { text-align: right; }
+.ot-notes { margin: 14mm 0 0; padding-left: 12mm; font-size: 11pt; line-height: 1.6; list-style: disc; }
+.ot-notes li::marker { font-size: 9pt; }
+.ot-notes li { margin-bottom: 3mm; }
+
+/* 일반 품의서 — header: logo centred (shared .hdr), kind checkboxes centred below; body list 굴림체, 1.5 line spacing. */
+.gen-kind { text-align: center; font-family: var(--gothic); font-size: 12pt; margin: 0 0 3mm; letter-spacing: 0.02em; }
+.gen-intro { font-family: var(--gothic); font-size: 11pt; margin: 6mm 0 3mm; }
+.gen-center { font-family: var(--gothic); text-align: center; font-size: 11pt; margin: 0 0 5mm; }
+.gen-items { list-style: none; margin: 0; padding: 0; font-family: var(--gothic); font-size: 11pt; line-height: 1.5; }
+.gen-items li { display: grid; grid-template-columns: 6mm 20mm 4mm 1fr; align-items: baseline; }
+.gen-items li.b { font-weight: 700; }
+.gen-items .k { white-space: pre; }
+.gen-items .v { white-space: pre-wrap; word-break: keep-all; }
+.gen-extra { margin: 4mm 0 0; font-family: var(--gothic); font-size: 11pt; line-height: 1.5; white-space: pre-wrap; word-break: keep-all; }
+.gen-attach { margin: 16mm 0 0; font-family: var(--gothic); font-size: 11pt; }
+.gen-attach .k { white-space: pre; }
+
+/* 택시비 지급 품의서 — same body style as 일반 품의서, wider label column, 첨부 as a bullet. */
+.taxi-intro { padding-left: 8mm; }
+.taxi-center { margin-top: 8mm; }
+.taxi-items li { grid-template-columns: 6mm 30mm 4mm 1fr; }
+.taxi-attach { margin: 12mm 0 0; padding-left: 12mm; list-style: disc; font-family: var(--gothic); font-size: 11pt; }
+.taxi-attach .k { white-space: pre; }
+
+/* 회식비 품의 pair — items spaced with a blank line between (Word list with empty paragraphs), red notes. */
+.dinner-items { list-style: none; margin: 0; padding: 0; font-family: var(--gothic); font-size: 11pt; line-height: 1.5; }
+.dinner-items li { display: grid; grid-template-columns: 6mm 1fr; margin-bottom: 4.5mm; word-break: keep-all; }
+.dinner-items li > .k, .dinner-items li > .v { display: inline; }
+.dinner-items li:not(.note) { display: block; padding-left: 6mm; text-indent: -6mm; }
+.dinner-items li .no { display: inline-block; width: 6mm; text-indent: 0; }
+.dinner-items li.b { font-weight: 700; }
+.dinner-items .k { white-space: pre; }
+.dinner-items li.note .body { display: block; padding-left: 3mm; }
+.dinner-items .red { color: #e00; }

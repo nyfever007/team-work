@@ -3,6 +3,8 @@ import { index, integer, real, sqliteTable, text, uniqueIndex, type AnySQLiteCol
 import { LEAVE_TYPES, REQUEST_STATUSES } from "@/lib/leaves/types";
 import { MILESTONE_APPROVALS, MILESTONE_STATUSES } from "@/lib/milestones/types";
 import { EVALUATION_STATUSES } from "@/lib/evaluations/types";
+import { CURRENCIES, VAT_MODES } from "@/lib/general/types";
+import { DINNER_STAGES } from "@/lib/dinner/types";
 import { MEMBER_REVIEW_STATUSES } from "@/lib/member-reviews/types";
 import { TASK_STATUSES } from "@/lib/tasks/types";
 
@@ -334,6 +336,158 @@ export const leaveRequests = sqliteTable(
   (t) => [index("leave_requests_member").on(t.memberId, t.startDate)],
 );
 
+/**
+ * 시간외(휴일) 근무신청서. Same approval flow as leave requests (submitted = 승인 대기 → approved/rejected, or cancelled).
+ * Member data is snapshotted at write time for printing.
+ */
+export const overtimeRequests = sqliteTable(
+  "overtime_requests",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    docNo: text("doc_no").notNull(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    startAt: text("start_at").notNull(), // "YYYY-MM-DDTHH:mm" (KST wall time)
+    endAt: text("end_at").notNull(),
+    hours: real("hours").notNull(),
+    reason: text("reason").notNull(),
+    writtenAt: text("written_at").notNull(), // 신청일 YYYY-MM-DD
+    // snapshots for the printed form
+    teamName: text("team_name").notNull(), // 부서
+    position: text("position").notNull(), // 직위 (rank || position)
+    duty: text("duty").notNull(), // 담당업무 (position)
+    memberName: text("member_name").notNull(),
+    status: text("status", { enum: REQUEST_STATUSES }).notNull().default("submitted"),
+    decidedByName: text("decided_by_name"),
+    decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
+    decisionNote: text("decision_note").notNull().default(""),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("overtime_requests_member").on(t.memberId, t.startAt)],
+);
+
+/** 일반 품의서. Same approval flow as leave/overtime; member data snapshotted for printing. */
+export const generalRequests = sqliteTable(
+  "general_requests",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    docNo: text("doc_no").notNull(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    title: text("title").notNull(), // 제목
+    purpose: text("purpose").notNull(), // 목적
+    vendor: text("vendor").notNull().default(""), // 거래처
+    period: text("period").notNull().default(""), // 기간 (free text, 용역일 때만)
+    timing: text("timing").notNull().default(""), // 시기 = 지급일자 (free text)
+    amount: integer("amount"), // minor units of `currency` (원, cents…)
+    currency: text("currency", { enum: CURRENCIES }).notNull().default("KRW"),
+    vat: text("vat", { enum: VAT_MODES }).notNull().default("included"),
+    account: text("account").notNull().default(""), // 지급계좌
+    extra: text("extra").notNull().default(""), // 양식 외 추가 항목
+    attachment: text("attachment").notNull().default(""), // 첨부 (파일명 등 텍스트)
+    retention: integer("retention").notNull().default(3), // 보존기간 (년, 0 = 영구)
+    writtenAt: text("written_at").notNull(),
+    teamName: text("team_name").notNull(),
+    position: text("position").notNull(), // 직위 (rank || position)
+    memberName: text("member_name").notNull(),
+    status: text("status", { enum: REQUEST_STATUSES }).notNull().default("submitted"),
+    decidedByName: text("decided_by_name"),
+    decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
+    decisionNote: text("decision_note").notNull().default(""),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("general_requests_member").on(t.memberId, t.writtenAt)],
+);
+
+/** 택시비 지급 품의서. Title is fixed on the form; same approval flow as the other 품의. */
+export const taxiRequests = sqliteTable(
+  "taxi_requests",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    docNo: text("doc_no").notNull(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(), // 지급 요청 사유
+    useStart: text("use_start").notNull(), // 이용 기간 YYYY-MM-DD
+    useEnd: text("use_end").notNull(),
+    amount: integer("amount").notNull(), // 총 이용 금액 (원)
+    account: text("account").notNull().default(""), // 지급계좌
+    attachment: text("attachment").notNull().default(""),
+    retention: integer("retention").notNull().default(3),
+    writtenAt: text("written_at").notNull(),
+    teamName: text("team_name").notNull(),
+    position: text("position").notNull(),
+    memberName: text("member_name").notNull(),
+    status: text("status", { enum: REQUEST_STATUSES }).notNull().default("submitted"),
+    decidedByName: text("decided_by_name"),
+    decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
+    decisionNote: text("decision_note").notNull().default(""),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("taxi_requests_member").on(t.memberId, t.writtenAt)],
+);
+
+/**
+ * 회식비 품의 pair. stage "budget" = 전산품의 (approved first); stage "settle" = 청구(정산)품의, filed from an
+ * approved budget row (`parentId`). Settle copies 인원/금액/결제 방식 and adds 시기 (회식일) + 지급계좌.
+ */
+export const dinnerRequests = sqliteTable(
+  "dinner_requests",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    stage: text("stage", { enum: DINNER_STAGES }).notNull(),
+    parentId: integer("parent_id").references((): AnySQLiteColumn => dinnerRequests.id, { onDelete: "set null" }),
+    docNo: text("doc_no").notNull(),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    headcount: text("headcount").notNull(), // 인원 (free text, e.g. "4명 (A, B, C, D)")
+    limitPerPerson: integer("limit_per_person").notNull(), // 1인당 한도 snapshot
+    amount: integer("amount").notNull(), // 금액 (원)
+    payMethod: text("pay_method").notNull(), // 법인카드 or 현금 수령인
+    dinnerDate: text("dinner_date"), // 시기 (settle only) YYYY-MM-DD
+    account: text("account").notNull().default(""), // 지급계좌 (settle only)
+    retention: integer("retention").notNull().default(3),
+    writtenAt: text("written_at").notNull(),
+    teamName: text("team_name").notNull(),
+    position: text("position").notNull(),
+    memberName: text("member_name").notNull(),
+    status: text("status", { enum: REQUEST_STATUSES }).notNull().default("submitted"),
+    decidedByName: text("decided_by_name"),
+    decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
+    decisionNote: text("decision_note").notNull().default(""),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("dinner_requests_member").on(t.memberId, t.writtenAt), index("dinner_requests_parent").on(t.parentId)],
+);
+
 /** Public holidays and company days off. Used to decide working days. */
 export const holidays = sqliteTable("holidays", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -454,6 +608,10 @@ export type MemberEvaluation = typeof memberEvaluations.$inferSelect;
 export type WeeklyReport = typeof weeklyReports.$inferSelect;
 export type Leave = typeof leaves.$inferSelect;
 export type LeaveRequest = typeof leaveRequests.$inferSelect;
+export type OvertimeRequest = typeof overtimeRequests.$inferSelect;
+export type GeneralRequest = typeof generalRequests.$inferSelect;
+export type TaxiRequest = typeof taxiRequests.$inferSelect;
+export type DinnerRequest = typeof dinnerRequests.$inferSelect;
 export type Holiday = typeof holidays.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 /** Raw members row. Most code should use `Member` from "@/lib/members/types" (joined with team). */

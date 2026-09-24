@@ -19,7 +19,8 @@ export function requestsFor(memberIds: number[], limit = 100) {
 
 /**
  * Admin: everyone. Leader: own team. Member: self.
- * Approval: admin, or the leader of the requester's team (never their own request; a leader's own request goes to admin).
+ * Approval: admin, or the leader of the requester's team (never their own request). A leader's own request is auto-approved
+ * at creation (`autoApproves`), so it never waits in anyone's inbox.
  */
 export function requestAccess(user: SafeUser) {
   const me = user.memberId != null ? memberById(user.memberId) : undefined;
@@ -35,6 +36,15 @@ export function requestAccess(user: SafeUser) {
     canApproveMember,
     canApprove: (r: { memberId: number }) => {
       const m = memberById(r.memberId);
+      return !!m && canApproveMember(m);
+    },
+    /**
+     * New documents skip the approval step when filed by someone who could approve them (admin on behalf of a member)
+     * or by a team leader for themselves — leaders' own 품의 are approved automatically.
+     */
+    autoApproves: (memberId: number) => {
+      if (leaderOf !== null && memberId === me?.id) return true;
+      const m = memberById(memberId);
       return !!m && canApproveMember(m);
     },
   };

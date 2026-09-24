@@ -2,7 +2,6 @@
 
 import { useTransition } from "react";
 import { toast } from "sonner";
-import { cancelLeaveRequest } from "@/lib/requests/actions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +15,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 
-export function CancelRequestButton({ id, docNo, approved }: { id: number; docNo: string; approved: boolean }) {
+/** "품의서 취소" with confirmation. `cancel` is a server action bound to the document, e.g. `cancelLeaveRequest.bind(null, id)`. */
+export function CancelRequestButton({ cancel, docNo, approved, approvedText = "달력의 휴가 항목이 삭제되고 연차가 복구됩니다. 취소된 문서는 목록에 남습니다." }: { cancel: () => Promise<{ ok: boolean; error?: string }>; docNo: string; approved: boolean; approvedText?: string }) {
   const [pending, start] = useTransition();
   return (
     <AlertDialog>
@@ -26,7 +26,7 @@ export function CancelRequestButton({ id, docNo, approved }: { id: number; docNo
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{docNo} 품의서를 취소할까요?</AlertDialogTitle>
-          <AlertDialogDescription>{approved ? "달력의 휴가 항목이 삭제되고 연차가 복구됩니다. 취소된 문서는 목록에 남습니다." : "승인 요청을 철회합니다. 취소된 문서는 목록에 남습니다."}</AlertDialogDescription>
+          <AlertDialogDescription>{approved ? approvedText : "승인 요청을 철회합니다. 취소된 문서는 목록에 남습니다."}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>닫기</AlertDialogCancel>
@@ -36,7 +36,7 @@ export function CancelRequestButton({ id, docNo, approved }: { id: number; docNo
             onClick={(e) => {
               e.preventDefault();
               start(async () => {
-                const r = await cancelLeaveRequest(id);
+                const r = await cancel();
                 if (r.ok) toast.success("품의서를 취소했습니다.");
                 else toast.error(r.error ?? "취소에 실패했습니다.");
               });

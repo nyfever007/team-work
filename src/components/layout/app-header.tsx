@@ -8,6 +8,10 @@ import { defaultReviewWeek, memberReviewsForWeek, unreadReviewCount } from "@/li
 import { milestoneAccess } from "@/lib/milestones/permissions";
 import { pendingMilestones } from "@/lib/milestones/queries";
 import { pendingRequestsFor } from "@/lib/requests/queries";
+import { pendingOvertimeFor } from "@/lib/overtime/queries";
+import { pendingGeneralFor } from "@/lib/general/queries";
+import { pendingTaxiFor } from "@/lib/taxi/queries";
+import { pendingDinnerFor } from "@/lib/dinner/queries";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +34,8 @@ function navBadges(user: SafeUser): Record<string, number> {
   if (approvals) badges["/team"] = approvals;
   const leaveApprovals = pendingRequestsFor(user).length;
   if (leaveApprovals) badges["/schedule"] = leaveApprovals;
+  const formApprovals = pendingOvertimeFor(user).length + pendingGeneralFor(user).length + pendingTaxiFor(user).length + pendingDinnerFor(user).length;
+  if (formApprovals) badges["/forms"] = formApprovals;
   if (user.memberId == null) return badges;
   badges["/my"] = unreadReviewCount(user.memberId);
   const members = allMembers();

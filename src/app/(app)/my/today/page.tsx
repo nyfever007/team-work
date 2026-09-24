@@ -14,6 +14,10 @@ import { sharedReviewsFor } from "@/lib/member-reviews/queries";
 import { milestoneAccess } from "@/lib/milestones/permissions";
 import { myMilestoneRequests, pendingMilestones } from "@/lib/milestones/queries";
 import { myOpenRequests, pendingRequestsFor } from "@/lib/requests/queries";
+import { myOpenOvertime, pendingOvertimeFor } from "@/lib/overtime/queries";
+import { myOpenGeneral, pendingGeneralFor } from "@/lib/general/queries";
+import { myOpenTaxi, pendingTaxiFor } from "@/lib/taxi/queries";
+import { myOpenDinner, pendingDinnerFor } from "@/lib/dinner/queries";
 import { weeklyItemsFor } from "@/lib/plans/queries";
 import { reviewsFor } from "@/lib/reviews/queries";
 import { myTasks } from "@/lib/tasks/queries";
@@ -104,6 +108,14 @@ export default async function TodayPage() {
   const myRequests = myMilestoneRequests(user.id);
   const leavesToApprove = pendingRequestsFor(user);
   const myLeaveRequests = me ? myOpenRequests(me.id) : [];
+  const overtimeToApprove = pendingOvertimeFor(user);
+  const myOvertime = me ? myOpenOvertime(me.id) : [];
+  const generalToApprove = pendingGeneralFor(user);
+  const myGeneral = me ? myOpenGeneral(me.id) : [];
+  const taxiToApprove = pendingTaxiFor(user);
+  const myTaxi = me ? myOpenTaxi(me.id) : [];
+  const dinnerToApprove = pendingDinnerFor(user);
+  const myDinner = me ? myOpenDinner(me.id) : [];
   const userNames = new Map(toApprove.length ? db.select({ id: schema.users.id, name: schema.users.name }).from(schema.users).all().map((u) => [u.id, u.name]) : []);
 
   return (
@@ -169,9 +181,9 @@ export default async function TodayPage() {
         </section>
       </FadeIn>
 
-      {toApprove.length + leavesToApprove.length > 0 && (
+      {toApprove.length + leavesToApprove.length + overtimeToApprove.length + generalToApprove.length + taxiToApprove.length + dinnerToApprove.length > 0 && (
         <FadeIn delay={0.03}>
-          <ApprovalInbox leaves={leavesToApprove} milestones={toApprove} proposerName={userNames} />
+          <ApprovalInbox leaves={leavesToApprove} overtime={overtimeToApprove} general={generalToApprove} taxi={taxiToApprove} dinner={dinnerToApprove} milestones={toApprove} proposerName={userNames} />
         </FadeIn>
       )}
 
@@ -221,9 +233,9 @@ export default async function TodayPage() {
               <FeedbackCard review={latestReview} comments={recentComments} />
             </FadeIn>
 
-            {myRequests.length + myLeaveRequests.length > 0 && (
+            {myRequests.length + myLeaveRequests.length + myOvertime.length + myGeneral.length + myTaxi.length + myDinner.length > 0 && (
               <FadeIn delay={0.1}>
-                <MyRequests leaves={myLeaveRequests} milestones={myRequests} />
+                <MyRequests leaves={myLeaveRequests} overtime={myOvertime} general={myGeneral} taxi={myTaxi} dinner={myDinner} milestones={myRequests} />
               </FadeIn>
             )}
 

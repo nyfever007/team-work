@@ -14,7 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { CancelRequestButton } from "./cancel-button";
+import { CancelRequestButton } from "@/components/cancel-request-button";
+import { cancelLeaveRequest } from "@/lib/requests/actions";
 
 export const metadata: Metadata = { title: "휴가 품의서" };
 
@@ -91,7 +92,7 @@ export default async function RequestDetailPage({ params }: PageProps<"/schedule
       {(req.status === "submitted" || req.status === "approved") && access.canCancel(req) && (
         <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm">
           <span className="text-muted-foreground">{req.status === "submitted" ? "승인 전에 신청을 철회할 수 있습니다. 문서는 취소 상태로 남습니다." : "품의서를 취소하면 달력에 반영된 휴가도 함께 삭제됩니다. 문서는 취소 상태로 남습니다."}</span>
-          <CancelRequestButton id={req.id} docNo={req.docNo} approved={req.status === "approved"} />
+          <CancelRequestButton cancel={cancelLeaveRequest.bind(null, req.id)} docNo={req.docNo} approved={req.status === "approved"} />
         </div>
       )}
     </div>

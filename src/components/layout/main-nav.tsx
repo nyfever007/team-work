@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
-import { CalendarDaysIcon, ListTodoIcon, SettingsIcon, UsersIcon, type LucideIcon } from "lucide-react";
+import { CalendarDaysIcon, FileSignatureIcon, ListTodoIcon, SettingsIcon, UsersIcon, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Item = { href: string; base: string; label: string; icon: LucideIcon };
@@ -15,6 +15,7 @@ export function MainNav({ isAdmin, badges = {} }: { isAdmin: boolean; badges?: R
     { href: "/my/today", base: "/my", label: "내 업무", icon: ListTodoIcon },
     { href: "/team", base: "/team", label: "팀", icon: UsersIcon },
     { href: "/schedule", base: "/schedule", label: "일정", icon: CalendarDaysIcon },
+    { href: "/forms", base: "/forms", label: "품의", icon: FileSignatureIcon },
     ...(isAdmin ? [{ href: "/admin/members", base: "/admin", label: "관리", icon: SettingsIcon }] : []),
   ];
   return (

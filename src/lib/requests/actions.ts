@@ -81,7 +81,7 @@ export async function createLeaveRequest(_prev: RequestFormState, formData: Form
     if (type === "sick" && bal.sick.used + held.sick + days > bal.sick.allowance) return { ok: false, error: `병가 잔여일수가 부족합니다. (연차 연도 ${bal.period.start} ~ ${bal.period.end}, 잔여 ${bal.sick.remaining}일${heldNote(held.sick)}, 신청 ${days}일)`, values: raw };
 
     // Filed by someone who may approve it (admin on behalf of a member): approved immediately.
-    const autoApprove = access.canApprove({ memberId });
+    const autoApprove = access.autoApproves(memberId); // admin on behalf, or a team leader filing their own
     const now = new Date();
 
     const id = db.transaction((tx) => {
