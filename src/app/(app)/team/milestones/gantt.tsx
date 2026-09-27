@@ -12,6 +12,8 @@ type Props = {
   holidays: HolidayMap;
   milestones: MilestoneRow[];
   memberName: Map<number, string>;
+  /** 작업 counts per milestone (검수 완료 / 전체). */
+  taskCounts?: Map<number, { total: number; approved: number; review: number }>;
   hrefFor: (id: number) => string;
 };
 
@@ -21,7 +23,7 @@ function daysBetween(a: string, b: string) {
   return Math.round((parseKey(b).getTime() - parseKey(a).getTime()) / 86_400_000);
 }
 
-export function Gantt({ from, weeks, today, holidays, milestones, memberName, hrefFor }: Props) {
+export function Gantt({ from, weeks, today, holidays, milestones, memberName, taskCounts, hrefFor }: Props) {
   const totalDays = weeks * 7;
   const to = addDays(from, totalDays - 1);
   const pct = (d: string) => (daysBetween(from, d) / totalDays) * 100;
@@ -101,6 +103,7 @@ export function Gantt({ from, weeks, today, holidays, milestones, memberName, hr
                       <span className="tabular-nums">
                         {m.startDate.slice(5).replace("-", "/")} ~ {m.dueDate.slice(5).replace("-", "/")}
                       </span>
+                      {taskCounts?.get(m.id) && <span className="tabular-nums" title="검수 완료 / 전체 작업">작업 {taskCounts.get(m.id)!.approved}/{taskCounts.get(m.id)!.total}</span>}
                       {overdue && !proposal && <Badge className={cn("h-4 px-1 text-[10px]", OVERDUE_BADGE)}>지연</Badge>}
                       {proposal && <Badge className={cn("h-4 px-1 text-[10px]", APPROVAL_BADGE[m.approval])}>{APPROVAL_LABEL[m.approval]}</Badge>}
                     </div>

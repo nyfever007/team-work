@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { index, integer, real, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { LEAVE_TYPES, REQUEST_STATUSES } from "@/lib/leaves/types";
 import { MILESTONE_APPROVALS, MILESTONE_STATUSES } from "@/lib/milestones/types";
+import { MILESTONE_TASK_STATUSES } from "@/lib/milestones/task-types";
 import { EVALUATION_STATUSES } from "@/lib/evaluations/types";
 import { CURRENCIES, VAT_MODES } from "@/lib/general/types";
 import { DINNER_STAGES } from "@/lib/dinner/types";
@@ -112,6 +113,8 @@ export const dailyTasks = sqliteTable(
     status: text("status", { enum: TASK_STATUSES }).notNull().default("todo"),
     note: text("note").notNull().default(""), // end-of-day remark for this item
     weeklyItemId: integer("weekly_item_id").references((): AnySQLiteColumn => weeklyItems.id, { onDelete: "set null" }),
+    // Pulled from a milestone 작업 ("오늘로"). No FK on purpose (ADD COLUMN caveat); a dangling id just hides the chip.
+    milestoneTaskId: integer("milestone_task_id"),
     position: integer("position").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
@@ -522,6 +525,37 @@ export const milestones = sqliteTable("milestones", {
     .default(sql`(unixepoch() * 1000)`),
 });
 
+/**
+ * 작업 needed to reach a milestone. Assignee reports completion (review); the milestone owner — or the team leader when
+ * there is no owner — verifies (approved) or sends it back. Milestone progress = approved / all tasks.
+ */
+export const milestoneTasks = sqliteTable(
+  "milestone_tasks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    milestoneId: integer("milestone_id")
+      .notNull()
+      .references(() => milestones.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    assigneeId: integer("assignee_id").references(() => members.id, { onDelete: "set null" }),
+    dueDate: text("due_date"), // YYYY-MM-DD, optional
+    status: text("status", { enum: MILESTONE_TASK_STATUSES }).notNull().default("todo"),
+    reviewNote: text("review_note").notNull().default(""), // why it was sent back
+    reportedAt: integer("reported_at", { mode: "timestamp_ms" }),
+    approvedAt: integer("approved_at", { mode: "timestamp_ms" }),
+    approvedByName: text("approved_by_name"),
+    position: integer("position").notNull().default(0),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("milestone_tasks_milestone").on(t.milestoneId), index("milestone_tasks_assignee").on(t.assigneeId)],
+);
+
 /** Status log entries for a milestone. */
 export const milestoneUpdates = sqliteTable("milestone_updates", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -598,6 +632,7 @@ export type TeamReport = typeof teamReports.$inferSelect;
 /** Raw milestones row. Pages use `MilestoneRow` from "@/lib/milestones/types" (joined with team name). */
 export type MilestoneRecord = typeof milestones.$inferSelect;
 export type MilestoneUpdate = typeof milestoneUpdates.$inferSelect;
+export type MilestoneTask = typeof milestoneTasks.$inferSelect;
 export type DailyLog = typeof dailyLogs.$inferSelect;
 export type DailyTask = typeof dailyTasks.$inferSelect;
 export type WeeklyItem = typeof weeklyItems.$inferSelect;

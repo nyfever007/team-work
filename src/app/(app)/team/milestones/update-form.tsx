@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 
-export function UpdateForm({ milestoneId, currentStatus, currentProgress }: { milestoneId: number; currentStatus: MilestoneStatus; currentProgress: number }) {
+export function UpdateForm({ milestoneId, currentStatus, currentProgress, autoProgress = false }: { milestoneId: number; currentStatus: MilestoneStatus; currentProgress: number; autoProgress?: boolean }) {
   const [state, action, pending] = useActionState(addMilestoneUpdate.bind(null, milestoneId), undefined);
   const formRef = useRef<HTMLFormElement>(null);
   const last = useRef<UpdateFormState>(undefined);
@@ -44,7 +44,7 @@ export function UpdateForm({ milestoneId, currentStatus, currentProgress }: { mi
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="progress">진행률 (%)</Label>
-          <Input id="progress" name="progress" type="number" min={0} max={100} step={5} defaultValue={currentProgress} className="w-24 bg-background" />
+          <Input id="progress" name="progress" type="number" min={0} max={100} step={5} defaultValue={currentProgress} className="w-24 bg-background" disabled={autoProgress} title={autoProgress ? "작업 검수 완료 기준으로 자동 계산됩니다" : undefined} />
         </div>
         <Button type="submit" size="sm" disabled={pending} className="ml-auto">
           {pending && <Loader2Icon className="size-4 animate-spin" />}

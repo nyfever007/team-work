@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { DeleteMilestoneButton } from "./delete-milestone-button";
 import { MilestoneFormDialog } from "./milestone-form-dialog";
 import { UpdateForm } from "./update-form";
+import { MilestoneTasks } from "./milestone-tasks";
+import type { MilestoneTask } from "@/lib/db/schema";
 
 type Props = {
   milestone: MilestoneRow;
@@ -25,6 +27,10 @@ type Props = {
   canManage: boolean;
   canUpdate: boolean;
   canApprove: boolean;
+  /** 작업 list and rights (approved milestones only). */
+  tasks: MilestoneTask[];
+  canReviewTasks: boolean;
+  myMemberId: number | null;
   /** Name of the member/user who proposed it (for pending/rejected). */
   proposerName: string | null;
   teams: { id: number; name: string }[];
@@ -39,7 +45,7 @@ function dday(due: string, today: string) {
   return diff > 0 ? `D-${diff}` : `${-diff}일 지남`;
 }
 
-export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoals, memberName, today, ownerName, canManage, canUpdate, canApprove, proposerName, teams, allowedTeamIds, members, closeHref }: Props) {
+export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoals, memberName, today, ownerName, canManage, canUpdate, canApprove, tasks, canReviewTasks, myMemberId, proposerName, teams, allowedTeamIds, members, closeHref }: Props) {
   const style = STATUS_STYLE[m.status];
   const overdue = isOverdue(m, today);
   const totalDays = Math.round((parseKey(m.dueDate).getTime() - parseKey(m.startDate).getTime()) / 86_400_000) + 1;
@@ -84,7 +90,7 @@ export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoa
 
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">진행률</span>
+          <span className="text-muted-foreground">진행률{tasks.length > 0 && " · 작업 검수 완료 기준"}</span>
           <span className="font-medium tabular-nums">{m.progress}%</span>
         </div>
         <div className="h-2.5 overflow-hidden rounded-full bg-muted">
@@ -117,15 +123,30 @@ export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoa
         </div>
       )}
 
+      {m.approval === "approved" && (
+        <>
+          <Separator />
+          <MilestoneTasks
+            milestoneId={m.id}
+            tasks={tasks}
+            members={members.filter((x) => x.team === m.team).map((x) => ({ id: x.id, name: x.name }))}
+            canManage={canManage}
+            canReview={canReviewTasks}
+            myMemberId={myMemberId}
+            today={today}
+          />
+        </>
+      )}
+
+      {(linkedWeekly.length > 0 || linkedGoals.length > 0) && (
+        <>
       <Separator />
 
       <div className="grid gap-2">
         <h3 className="text-sm font-semibold">
-          참여 현황 <span className="font-normal text-muted-foreground">주간 항목 {linkedWeekly.filter((w) => w.status === "done").length}/{linkedWeekly.length} · 월간 목표 {linkedGoals.length}</span>
+          이전 연결 항목 <span className="font-normal text-muted-foreground">주간 항목 {linkedWeekly.filter((w) => w.status === "done").length}/{linkedWeekly.length} · 월간 목표 {linkedGoals.length}</span>
         </h3>
-        {linkedWeekly.length === 0 && linkedGoals.length === 0 ? (
-          <p className="text-xs text-muted-foreground">아직 연결된 개인 항목이 없습니다. 구성원이 내 업무 › 이번 주/이번 달에서 이 마일스톤에 항목을 연결하면 여기에 모입니다.</p>
-        ) : (
+        {(
           <div className="grid gap-2 sm:grid-cols-2">
             {[...new Set([...linkedWeekly.map((w) => w.memberId), ...linkedGoals.map((g) => g.memberId)])].map((memberId) => {
               const items = linkedWeekly.filter((w) => w.memberId === memberId);
@@ -151,13 +172,15 @@ export function MilestoneDetail({ milestone: m, updates, linkedWeekly, linkedGoa
           </div>
         )}
       </div>
+        </>
+      )}
 
       <Separator />
 
       <div className="grid gap-3">
         <h3 className="text-sm font-semibold">현황 업데이트 {updates.length > 0 && <span className="font-normal text-muted-foreground">{updates.length}건</span>}</h3>
         {canUpdate ? (
-          <UpdateForm milestoneId={m.id} currentStatus={m.status} currentProgress={m.progress} />
+          <UpdateForm milestoneId={m.id} currentStatus={m.status} currentProgress={m.progress} autoProgress={tasks.length > 0} />
         ) : (
           <p className="text-xs text-muted-foreground">{m.approval !== "approved" ? "승인된 뒤에 현황을 남길 수 있습니다." : "이 팀 구성원만 현황을 남길 수 있습니다."}</p>
         )}

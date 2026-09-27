@@ -1,3 +1,4 @@
+import { REPORT_SECTION_HINT } from "@/lib/logs/template";
 import { isRating, type MemberReviewInput } from "./types";
 
 export const MEMBER_REVIEW_SYSTEM_PROMPT = `당신은 소프트웨어 팀 팀장이 구성원 한 명의 한 주를 리뷰하도록 돕는 어시스턴트입니다.
@@ -8,6 +9,7 @@ export const MEMBER_REVIEW_SYSTEM_PROMPT = `당신은 소프트웨어 팀 팀장
 - 한국어, 존댓말(~했습니다/~해 주세요). 입력에 있는 사실만 근거로 쓰고 추측하거나 부풀리지 않는다.
 - 칭찬과 보완점 모두 구체적인 항목·날짜를 근거로 든다. "열심히 했다" 같은 일반론은 쓰지 않는다.
 - 휴가일은 기록이 없어도 감점 요소로 보지 않는다.
+- 주간 보고의 해결한 문제·제안·도움·배운 점이 있으면 잘한 점에 구체적으로 인정한다. ${REPORT_SECTION_HINT}
 - 기록 습관(목표 작성·퇴근 정리 일수)이 부족하면 보완점에 짧게 언급한다.
 - 지난주 요청한 할 일이 있으면 이행 여부를 종합 평가에 한 줄로 언급한다.
 - 다음 주 할 일은 구성원이 바로 주간 항목으로 옮길 수 있는 짧은 명령형 문장(40자 이내)으로, 2~4개. 미완료 항목의 마무리와 보완점을 우선한다.

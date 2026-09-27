@@ -20,6 +20,8 @@ type Props = {
   carryFrom?: { date: string; label: string; count: number } | null;
   /** This week's items (quick-add chips and linked labels). */
   weeklyItems?: WeeklyItem[];
+  /** Daily goals pulled from a milestone 작업: task id → milestone title (for the chip). */
+  milestoneLinks?: Record<number, string>;
   /** Morning = focus on writing goals (input autofocus when empty). */
   morning?: boolean;
 };
@@ -36,13 +38,14 @@ function reduce(tasks: DailyTask[], op: Op): DailyTask[] {
       return tasks.filter((t) => t.id !== op.id);
     case "add":
       // Temporary negative id; replaced by the real row when the server revalidates.
-      return [...tasks, { id: op.tempId, memberId: 0, date: "", title: op.title, status: "todo", note: "", weeklyItemId: null, position: 1e9, createdAt: new Date(), reviewedAt: null }];
+      return [...tasks, { id: op.tempId, memberId: 0, date: "", title: op.title, status: "todo", note: "", weeklyItemId: null, milestoneTaskId: null, position: 1e9, createdAt: new Date(), reviewedAt: null }];
   }
 }
 
 type Result = { ok: boolean; error?: string };
 
-export function TodayGoals({ date, tasks, carryFrom, weeklyItems = [], morning }: Props) {
+export function TodayGoals({ date, tasks, carryFrom, weeklyItems = [], milestoneLinks = {}, morning }: Props) {
+  // Weekly plan items are no longer part of the member flow; the prop stays for linked labels on old rows.
   const [list, apply] = useOptimistic(tasks, reduce);
   const [pending, start] = useTransition();
   const [draft, setDraft] = useState("");
@@ -138,9 +141,8 @@ export function TodayGoals({ date, tasks, carryFrom, weeklyItems = [], morning }
       )}
 
       {list.length === 0 ? (
-        <div className="grid place-items-center gap-1 rounded-xl border border-dashed py-8 text-center">
+        <div className="grid place-items-center rounded-xl border border-dashed py-5 text-center">
           <p className="text-sm font-medium">아직 오늘 목표가 없어요</p>
-          <p className="text-xs text-muted-foreground">오늘 꼭 끝낼 일 3~5개를 적어 보세요. 퇴근 전에 체크만 하면 됩니다.</p>
         </div>
       ) : (
         <ul className="grid gap-1.5">
@@ -151,6 +153,7 @@ export function TodayGoals({ date, tasks, carryFrom, weeklyItems = [], morning }
                 task={t}
                 disabled={pending && t.id < 0}
                 linked={t.weeklyItemId != null ? weeklyTitle.get(t.weeklyItemId) : undefined}
+                milestone={t.milestoneTaskId != null ? milestoneLinks[t.milestoneTaskId] : undefined}
                 onStatus={(status) => run({ type: "status", id: t.id, status }, () => setTaskStatus(t.id, status))}
                 onRename={(title) => run({ type: "rename", id: t.id, title }, () => renameTask(t.id, title))}
                 onDelete={() => run({ type: "delete", id: t.id }, () => deleteTask(t.id))}
@@ -170,7 +173,7 @@ export function TodayGoals({ date, tasks, carryFrom, weeklyItems = [], morning }
             </span>
             <span className="flex items-center gap-1">
               {pending && <Loader2Icon className="size-3 animate-spin" />}
-              {pending ? "저장 중" : "체크하면 자동 저장"}
+              {pending && "저장 중"}
             </span>
           </div>
           <AnimatePresence>
@@ -193,7 +196,7 @@ export function TodayGoals({ date, tasks, carryFrom, weeklyItems = [], morning }
   );
 }
 
-function GoalRow({ task, disabled, linked, onStatus, onRename, onDelete }: { task: DailyTask; disabled: boolean; linked?: string; onStatus: (s: TaskStatus) => void; onRename: (t: string) => void; onDelete: () => void }) {
+function GoalRow({ task, disabled, linked, milestone, onStatus, onRename, onDelete }: { task: DailyTask; disabled: boolean; linked?: string; milestone?: string; onStatus: (s: TaskStatus) => void; onRename: (t: string) => void; onDelete: () => void }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(task.title);
   const done = task.status === "done";
@@ -273,6 +276,7 @@ function GoalRow({ task, disabled, linked, onStatus, onRename, onDelete }: { tas
         >
           <span className="line-clamp-2">{task.title}</span>
           {linked && <span className="mt-0.5 block truncate text-[11px] text-sky-700">주간 · {linked}</span>}
+          {milestone && <span className="mt-0.5 block truncate text-[11px] text-accent-foreground">마일스톤 · {milestone}</span>}
         </button>
       )}
 

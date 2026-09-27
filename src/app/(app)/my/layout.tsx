@@ -13,8 +13,7 @@ export default async function MyLayout({ children }: LayoutProps<"/my">) {
         title="내 업무"
         items={[
           { href: "/my/today", label: "오늘" },
-          { href: "/my/week", label: "이번 주" },
-          { href: "/my/month", label: "이번 달" },
+          { href: "/my/week", label: "주간 보고" },
           ...(me ? [{ href: "/my/feedback", label: "피드백", badge: unreadReviewCount(me.id) }] : []),
           { href: "/my/history", label: "기록" },
           ...(canMeet ? [{ href: "/my/meeting", label: "미팅 노트" }] : []),

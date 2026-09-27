@@ -13,7 +13,6 @@ export type PlanResult = { ok: true; id?: number } | { ok: false; error: string 
 function revalidate() {
   revalidatePath("/team/manage");
   revalidatePath("/my/week");
-  revalidatePath("/my/month");
   revalidatePath("/my/today");
   revalidatePath("/team");
   revalidatePath("/team/milestones");

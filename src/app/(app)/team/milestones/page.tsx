@@ -8,6 +8,7 @@ import { addDays, addMonths, daysInMonth, formatKoDate, formatKoMonth, isValidKe
 import { allMembers, allTeams, memberById } from "@/lib/members/queries";
 import { milestoneAccess } from "@/lib/milestones/permissions";
 import { milestoneById, milestoneUpdatesFor, milestonesInRange } from "@/lib/milestones/queries";
+import { canReviewMilestone, taskCountsFor, tasksForMilestone } from "@/lib/milestones/task-queries";
 import { monthlyGoalsForMilestone, weeklyItemsForMilestone } from "@/lib/plans/queries";
 import { STATUS_LABEL, STATUS_STYLE, type MilestoneStatus } from "@/lib/milestones/types";
 import { loadHolidays } from "@/lib/workdays";
@@ -175,7 +176,7 @@ export default async function MilestonesPage({ searchParams }: PageProps<"/team/
       {view === "calendar" ? (
         <MilestoneCalendar month={month} today={today} holidays={holidays} milestones={visible} hrefFor={(id) => href({ m: String(id) })} />
       ) : (
-        <Gantt from={from} weeks={weeks} today={today} holidays={holidays} milestones={visible} memberName={memberName} hrefFor={(id) => href({ m: String(id) })} />
+        <Gantt from={from} weeks={weeks} today={today} holidays={holidays} milestones={visible} memberName={memberName} taskCounts={taskCountsFor(visible.map((m) => m.id))} hrefFor={(id) => href({ m: String(id) })} />
       )}
 
       <DetailDialog open={!!selected} closeHref={href({ m: null })}>
@@ -191,6 +192,9 @@ export default async function MilestonesPage({ searchParams }: PageProps<"/team/
             canManage={access.canManage(selected)}
             canUpdate={access.canUpdate(selected)}
             canApprove={access.canApprove(selected)}
+            tasks={tasksForMilestone(selected.id)}
+            canReviewTasks={canReviewMilestone(user, selected)}
+            myMemberId={user.memberId}
             proposerName={proposer}
             teams={teams}
             allowedTeamIds={access.teamIds}
