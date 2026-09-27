@@ -3,7 +3,7 @@ import { index, integer, real, sqliteTable, text, uniqueIndex, type AnySQLiteCol
 import { LEAVE_TYPES, REQUEST_STATUSES } from "@/lib/leaves/types";
 import { MILESTONE_APPROVALS, MILESTONE_STATUSES } from "@/lib/milestones/types";
 import { MILESTONE_TASK_STATUSES } from "@/lib/milestones/task-types";
-import { EVALUATION_STATUSES } from "@/lib/evaluations/types";
+import { EVAL_LEVELS, EVALUATION_STATUSES } from "@/lib/evaluations/types";
 import { CURRENCIES, VAT_MODES } from "@/lib/general/types";
 import { DINNER_STAGES } from "@/lib/dinner/types";
 import { MEMBER_REVIEW_STATUSES } from "@/lib/member-reviews/types";
@@ -183,8 +183,8 @@ export const memberReviews = sqliteTable(
 );
 
 /**
- * 인사평가: leader's (or admin's) quarterly evaluation of a member, one per member per quarter ("2026-Q3").
- * The yearly average is computed from finalized quarters, not stored.
+ * 인사평가 at four levels (주간 → 월간 → 분기 → 연간), one row per member per period. Each level's AI draft summarises
+ * the level below. Private HR data — only admins and the member's team leader can read it; members never see it.
  * Private HR data — only admins and the member's team leader can read it; members never see it.
  */
 export const memberEvaluations = sqliteTable(
@@ -194,7 +194,9 @@ export const memberEvaluations = sqliteTable(
     memberId: integer("member_id")
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
-    period: text("period").notNull(), // "2026-Q3"
+    // Level is implied by the key: week "2026-09-21" (Monday) · month "2026-09" · quarter "2026-Q3" · year "2026".
+    level: text("level", { enum: EVAL_LEVELS }).notNull().default("quarter"),
+    period: text("period").notNull(),
     evaluatorId: integer("evaluator_id").references(() => users.id, { onDelete: "set null" }),
     evaluatorName: text("evaluator_name").notNull(),
     scores: text("scores", { mode: "json" }).$type<Record<string, number>>().notNull().default({}), // criterion key → 1-10
@@ -207,6 +209,7 @@ export const memberEvaluations = sqliteTable(
     improvements: text("improvements").notNull().default(""),
     status: text("status", { enum: EVALUATION_STATUSES }).notNull().default("draft"),
     finalizedAt: integer("finalized_at", { mode: "timestamp_ms" }),
+    finalGrade: text("final_grade"), // 고과 (quarter only): leader's final S–D after absolute/relative review
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),

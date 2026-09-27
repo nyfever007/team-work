@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { CheckCircle2Icon, ClipboardCheckIcon, Loader2Icon, LockIcon, PlusIcon, SaveIcon, SparklesIcon, StarHalfIcon, StarIcon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { generateEvaluationDraft, saveEvaluation } from "@/lib/evaluations/actions";
-import { CRITERIA, MAX_SCORE, gradeOf, periodLabel, starsOf, totalScore, type CriterionKey, type EvaluationInput, type EvaluationStatus, type Scores } from "@/lib/evaluations/types";
+import { CRITERIA, LEVEL_LABEL, MAX_SCORE, childLevel, gradeOf, levelOf, periodLabel, starsOf, totalScore, type CriterionKey, type EvaluationInput, type EvaluationStatus, type Scores } from "@/lib/evaluations/types";
 import type { EvaluationReference } from "@/lib/evaluations/queries";
 import {
   AlertDialog,
@@ -33,6 +33,8 @@ type Props = {
   status: EvaluationStatus | null;
   meta: { evaluatorName: string; updatedAt: number; finalizedAt: number | null; aiModel: string | null; aiGeneratedAt: number | null } | null;
   reference: EvaluationReference;
+  /** Lower-level evaluations this one summarises (weeks of a month, months of a quarter, quarters of a year). */
+  lower: { period: string; total: number | null; status: EvaluationStatus; href: string }[];
   aiReady: boolean;
   model: string;
 };
@@ -42,7 +44,12 @@ const fmt = (ts: number | null) => (ts ? new Intl.DateTimeFormat("ko-KR", { time
 const same = (a: EvaluationInput, b: EvaluationInput) => JSON.stringify(a) === JSON.stringify(b);
 const rate = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
 
-export function EvaluationForm({ memberId, memberName, period, initial, status: initialStatus, meta, reference: r, aiReady, model }: Props) {
+export function EvaluationForm({ memberId, memberName, period, initial, status: initialStatus, meta, reference: r, lower, aiReady, model }: Props) {
+  const level = levelOf(period)!;
+  const kid = childLevel(level);
+  const kidTotals = lower.map((c) => c.total).filter((t): t is number => t != null);
+  const kidAvg = kidTotals.length ? Math.round((kidTotals.reduce((a, b) => a + b, 0) / kidTotals.length) * 10) / 10 : null;
+  const aiBasis = level === "week" ? "그 주의 주간 리뷰·일일 기록·주간 보고를 읽고" : lower.length ? `${LEVEL_LABEL[kid!]} 평가 ${lower.length}개의 점수·근거·추세를 읽고` : `${LEVEL_LABEL[kid!]} 평가가 아직 없어 원본 기록으로`;
   const [value, setValue] = useState<EvaluationInput>(initial);
   const [saved, setSaved] = useState<EvaluationInput>(initial);
   const [status, setStatus] = useState<EvaluationStatus | null>(initialStatus);
@@ -79,7 +86,7 @@ export function EvaluationForm({ memberId, memberName, period, initial, status: 
         setAiModel(res.model);
         toast.success("AI가 항목별 점수와 근거를 채웠습니다. 검토하고 조정한 뒤 저장하세요.");
       } catch {
-        toast.error("AI 채점에 실패했습니다.");
+        toast.error("AI 평가에 실패했습니다.");
       }
     });
 
@@ -105,7 +112,7 @@ export function EvaluationForm({ memberId, memberName, period, initial, status: 
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle className="flex items-center gap-2 text-lg font-bold">
             <ClipboardCheckIcon className="size-5 text-brand" />
-            {periodLabel(period)} 인사평가
+            {periodLabel(period)} {LEVEL_LABEL[level]} 인사평가
           </CardTitle>
           {status === "final" ? <Badge className="bg-emerald-100 text-emerald-800">확정</Badge> : status === "draft" ? <Badge variant="secondary">임시 저장</Badge> : <Badge variant="outline">미작성</Badge>}
           {dirty && (
@@ -121,7 +128,7 @@ export function EvaluationForm({ memberId, memberName, period, initial, status: 
           {memberName}님의 {periodLabel(period)} 평가 · 각 항목 1~{MAX_SCORE}점, 총점은 평균입니다.
           {meta && ` · ${meta.evaluatorName} · 마지막 저장 ${fmt(meta.updatedAt)}`}
           {meta?.finalizedAt && status === "final" && ` · 확정 ${fmt(meta.finalizedAt)}`}
-          {meta?.aiGeneratedAt && ` · AI 채점 참고 (${meta.aiModel ?? "AI"})`}
+          {meta?.aiGeneratedAt && ` · AI 초안 참고 (${meta.aiModel ?? "AI"})`}
         </CardDescription>
       </CardHeader>
 
@@ -131,20 +138,20 @@ export function EvaluationForm({ memberId, memberName, period, initial, status: 
             <div className="grid gap-2 rounded-xl border border-brand/20 bg-gradient-to-br from-brand-soft to-card p-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-accent-foreground">
                 <SparklesIcon className="size-4" />
-                AI 채점
-                <span className="font-normal text-muted-foreground">· 일일·주간 보고와 리뷰를 읽고 항목별 점수와 근거를 제안합니다</span>
+                AI 평가
+                <span className="font-normal text-muted-foreground">· {aiBasis} 항목별 점수와 근거를 제안합니다</span>
                 <span className="ml-auto text-xs font-normal text-muted-foreground">{aiReady ? model : "키 미설정"}</span>
               </div>
               {!aiReady && <p className="text-xs text-amber-900">OPENAI_API_KEY가 설정되지 않았습니다. .env에 키를 넣고 서버를 재시작하면 사용할 수 있습니다.</p>}
               <div className="flex gap-2">
                 <Input value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="추가 지시 (선택) 예: 3분기 결제 프로젝트 기여를 중점적으로" maxLength={300} disabled={!aiReady || busy} aria-label="AI 추가 지시" className="bg-card" />
-                <Button onClick={() => (scored > 0 || value.summary.trim() ? setConfirmAi(true) : generate())} disabled={!aiReady || busy || r.tasksTotal + r.itemsTotal === 0} className="shrink-0">
+                <Button onClick={() => (scored > 0 || value.summary.trim() ? setConfirmAi(true) : generate())} disabled={!aiReady || busy || (level === "year" && lower.length === 0)} className="shrink-0">
                   {generating ? <Loader2Icon className="animate-spin" /> : <SparklesIcon />}
-                  {scored > 0 ? "다시 채점" : "AI 채점"}
+                  {scored > 0 ? "다시 평가" : "AI 평가"}
                 </Button>
               </div>
-              {r.tasksTotal + r.itemsTotal === 0 && <p className="text-xs text-muted-foreground">이 기간에 일일·주간 기록이 없어 AI 채점을 할 수 없습니다.</p>}
-              {generating && <p className="text-xs text-muted-foreground">분기 기록을 주 단위로 읽고 있어요. 10~30초 걸릴 수 있습니다.</p>}
+              {level === "year" && lower.length === 0 && <p className="text-xs text-muted-foreground">분기 평가가 있어야 연간 AI 평가를 만들 수 있습니다.</p>}
+              {generating && <p className="text-xs text-muted-foreground">평가 자료를 읽고 있어요. 10~30초 걸릴 수 있습니다.</p>}
             </div>
           )}
 
@@ -271,6 +278,36 @@ export function EvaluationForm({ memberId, memberName, period, initial, status: 
             </p>
           </div>
 
+          {kid && (
+            <div className="grid gap-2 rounded-2xl border p-4 text-sm">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">{LEVEL_LABEL[kid]} 평가</span>
+                {kidAvg != null && <span className="text-xs text-muted-foreground">평균 <b className="font-semibold text-foreground tabular-nums">{kidAvg.toFixed(1)}</b></span>}
+              </div>
+              {lower.length === 0 ? (
+                <p className="text-xs text-muted-foreground">아직 없습니다.</p>
+              ) : (
+                <ul className="grid gap-1">
+                  {lower.map((c) => {
+                    const g = gradeOf(c.total);
+                    return (
+                      <li key={c.period}>
+                        <a href={c.href} className="flex items-center justify-between gap-2 rounded px-1 py-0.5 text-xs hover:bg-muted">
+                          <span className="truncate">{periodLabel(c.period)}</span>
+                          <span className="flex shrink-0 items-center gap-1">
+                            {c.status === "draft" && <span className="text-[10px] text-muted-foreground">초안</span>}
+                            <span className="font-semibold tabular-nums">{c.total?.toFixed(1) ?? "—"}</span>
+                            {g && <span className={cn("rounded px-1 text-[10px] font-bold", g.className)}>{g.grade}</span>}
+                          </span>
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+
           <div className="grid gap-3 rounded-2xl border p-4 text-sm">
             <div>
               <div className="text-xs font-semibold text-muted-foreground">참고 지표</div>
@@ -287,7 +324,7 @@ export function EvaluationForm({ memberId, memberName, period, initial, status: 
             </RefGroup>
             <RefGroup title="성과">
               <RefRow k="일일 목표 완료" v={`${rate(r.tasksDone, r.tasksTotal)} (${r.tasksDone}/${r.tasksTotal})`} />
-              <RefRow k="주간 항목 완료" v={`${rate(r.itemsDone, r.itemsTotal)} (${r.itemsDone}/${r.itemsTotal})`} />
+              <RefRow k="주간 보고 작성" v={`${r.reportedWeeks}/${r.weeks}주`} warn={r.weeks > 0 && r.reportedWeeks / r.weeks < 0.7} />
               <RefRow k="주간 리뷰 평균" v={r.reviewAvg != null ? `${r.reviewAvg}/5 (${r.reviewCount}회)` : "—"} />
             </RefGroup>
           </div>
@@ -297,12 +334,12 @@ export function EvaluationForm({ memberId, memberName, period, initial, status: 
       <AlertDialog open={confirmAi} onOpenChange={setConfirmAi}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>입력한 점수와 의견을 AI 채점으로 바꿀까요?</AlertDialogTitle>
+            <AlertDialogTitle>입력한 점수와 의견을 AI 평가로 바꿀까요?</AlertDialogTitle>
             <AlertDialogDescription>지금 화면의 점수·근거·의견이 AI 제안으로 대체됩니다. 저장하기 전까지는 ‘되돌리기’로 마지막 저장본을 복원할 수 있습니다.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction onClick={generate}>AI로 다시 채점</AlertDialogAction>
+            <AlertDialogAction onClick={generate}>AI로 다시 평가</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

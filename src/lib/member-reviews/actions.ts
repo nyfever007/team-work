@@ -2,6 +2,9 @@
 
 import { and, eq, max } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { autoWeeklyEvaluation } from "@/lib/evaluations/store";
+import { openAIConfigured } from "@/lib/reports/openai";
 import { requireMember, requireUser } from "@/lib/auth/dal";
 import { addDays, isValidKey, weekStartOf } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
@@ -70,7 +73,7 @@ function clean(input: MemberReviewInput): MemberReviewInput {
  */
 export async function saveMemberReview(memberId: number, weekStart: string, input: MemberReviewInput, opts: { share: boolean; assignNext?: boolean; model?: string | null }): Promise<SaveResult> {
   try {
-    const { user } = await reviewerFor(memberId);
+    const { user, target } = await reviewerFor(memberId);
     if (!validWeek(weekStart)) return { ok: false, error: "주차가 올바르지 않습니다." };
     const v = clean(input);
     const empty = !v.summary && !v.strengths && !v.improvements && !v.nextActions;
@@ -111,6 +114,11 @@ export async function saveMemberReview(memberId: number, weekStart: string, inpu
     });
 
     revalidate();
+    // Sharing a review also drafts the private 주간 인사평가 in the background (never blocks, never overwrites edits).
+    if (opts.share && openAIConfigured()) {
+      const evaluator = { id: user.id, name: user.name };
+      after(() => autoWeeklyEvaluation(target, weekStart, evaluator));
+    }
     const message = opts.share ? `리뷰를 공유했습니다.${assigned ? ` 다음 주 할 일 ${assigned}개를 지정했습니다.` : ""}` : existing?.status === "shared" ? "공유를 취소하고 초안으로 저장했습니다." : "초안을 저장했습니다.";
     return { ok: true, message, assigned };
   } catch (e) {

@@ -9,8 +9,8 @@ import { db, schema } from "@/lib/db";
 import { leaveBalance } from "@/lib/leaves/balance";
 import { LEAVE_BADGE_CLASS, LEAVE_LABEL, REQUEST_STATUS_CLASS, REQUEST_STATUS_LABEL } from "@/lib/leaves/types";
 import { collectMemberWeek } from "@/lib/member-reviews/data";
-import { evaluationReference, evaluationsFor } from "@/lib/evaluations/queries";
-import { isPeriod, isYear, periodOf, yearSummary } from "@/lib/evaluations/types";
+import { childEvaluations, evaluationFor, evaluationReference } from "@/lib/evaluations/queries";
+import { currentPeriod, isEvalPeriod, periodRange } from "@/lib/evaluations/types";
 import { openAIConfigured, openAIModel } from "@/lib/reports/openai";
 import { memberAccess } from "@/lib/members/access";
 import { memberColorMap } from "@/lib/members/colors";
@@ -32,7 +32,6 @@ import { cn } from "@/lib/utils";
 import { CreateAccount } from "./create-account";
 import { EvaluationForm } from "./evaluation-form";
 import { EvaluationNav } from "./evaluation-nav";
-import { YearSummaryCard } from "./year-summary";
 
 export const metadata: Metadata = { title: "구성원 상세" };
 
@@ -60,18 +59,20 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
   const reviews = canSeeReviews ? db.select().from(schema.memberReviews).where(eq(schema.memberReviews.memberId, member.id)).orderBy(desc(schema.memberReviews.weekStart)).limit(20).all() : [];
   const reviewByWeek = new Map(reviews.map((r) => [r.weekStart, r]));
   const thisWeek = weekStartOf(today);
-  const weeks = Array.from({ length: WEEKS }, (_, i) => addDays(thisWeek, -7 * i)).map((w) => ({ week: w, stats: collectMemberWeek(member, w).stats, review: reviewByWeek.get(w) }));
+  const weeks = Array.from({ length: WEEKS }, (_, i) => addDays(thisWeek, -7 * i)).map((w) => {
+    const data = collectMemberWeek(member, w);
+    return { week: w, stats: data.stats, reported: !!data.result, review: reviewByWeek.get(w) };
+  });
   const totals = weeks.slice(1, 5).reduce((a, w) => ({ done: a.done + w.stats.tasksDone, total: a.total + w.stats.tasksTotal, planned: a.planned + w.stats.plannedDays, work: a.work + w.stats.workDays }), { done: 0, total: 0, planned: 0, work: 0 });
 
-  // 인사평가 (quarterly + yearly average): only for evaluators (admin / this member's leader, never self).
-  // ?period=2026-Q3 → that quarter's form; ?period=2026 → yearly average; default = current quarter.
-  const evaluations = canReview ? evaluationsFor(member.id) : [];
-  const period = isPeriod(sp.period) ? sp.period : isYear(sp.period) ? null : periodOf(today);
-  const thisYear = Number(today.slice(0, 4));
-  const minYear = Math.min(Number(member.joinedAt.slice(0, 4)), ...evaluations.map((e) => Number(e.period.slice(0, 4))));
-  const evalYear = Math.min(thisYear, Math.max(minYear, Number((period ?? String(sp.period)).slice(0, 4))));
-  const evaluation = period ? evaluations.find((e) => e.period === period) : undefined;
-  const savedPeriods = new Map(evaluations.map((e) => [e.period, { status: e.status, total: e.total }]));
+  // 인사평가 (주간 → 월간 → 분기 → 연간): only for evaluators (admin / this member's leader, never self).
+  // ?period= week "2026-09-21" · month "2026-09" · quarter "2026-Q3" · year "2026"; default = this quarter.
+  const requested = typeof sp.period === "string" ? sp.period : "";
+  const period = isEvalPeriod(requested) && periodRange(requested).start <= today ? requested : currentPeriod("quarter", today);
+  const evaluation = canReview ? evaluationFor(member.id, period) : undefined;
+  const lowerEvals = canReview
+    ? childEvaluations(member.id, period).map((c) => ({ period: c.period, total: c.total, status: c.status, href: `/team/members/${member.id}?period=${c.period}#evaluation` }))
+    : [];
 
   const requests = requestsFor([member.id], 50);
   const owned = milestonesInRange(addDays(today, -365), addDays(today, 365)).filter((ms) => ms.ownerId === member.id && ms.status !== "done");
@@ -145,23 +146,20 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
 
       {canReview && (
         <section id="evaluation" className="grid scroll-mt-20 gap-3">
-          <EvaluationNav memberId={member.id} year={evalYear} period={period} minYear={minYear} maxYear={thisYear} today={today} saved={savedPeriods} />
-          {period ? (
-            <EvaluationForm
-              key={period}
-              memberId={member.id}
-              memberName={member.name}
-              period={period}
-              initial={{ scores: evaluation?.scores ?? {}, reasons: evaluation?.reasons ?? {}, summary: evaluation?.summary ?? "", strengths: evaluation?.strengths ?? "", improvements: evaluation?.improvements ?? "" }}
-              status={evaluation?.status ?? null}
-              meta={evaluation ? { evaluatorName: evaluation.evaluatorName, updatedAt: evaluation.updatedAt.getTime(), finalizedAt: evaluation.finalizedAt?.getTime() ?? null, aiModel: evaluation.aiModel, aiGeneratedAt: evaluation.aiGeneratedAt?.getTime() ?? null } : null}
-              reference={evaluationReference(member, period)}
-              aiReady={openAIConfigured()}
-              model={openAIModel()}
-            />
-          ) : (
-            <YearSummaryCard summary={yearSummary(String(evalYear), evaluations)} memberId={member.id} memberName={member.name} />
-          )}
+          <EvaluationNav memberId={member.id} period={period} today={today} minDate={member.joinedAt} saved={evaluation ? { status: evaluation.status, total: evaluation.total } : undefined} />
+          <EvaluationForm
+            key={period}
+            memberId={member.id}
+            memberName={member.name}
+            period={period}
+            initial={{ scores: evaluation?.scores ?? {}, reasons: evaluation?.reasons ?? {}, summary: evaluation?.summary ?? "", strengths: evaluation?.strengths ?? "", improvements: evaluation?.improvements ?? "" }}
+            status={evaluation?.status ?? null}
+            meta={evaluation ? { evaluatorName: evaluation.evaluatorName, updatedAt: evaluation.updatedAt.getTime(), finalizedAt: evaluation.finalizedAt?.getTime() ?? null, aiModel: evaluation.aiModel, aiGeneratedAt: evaluation.aiGeneratedAt?.getTime() ?? null } : null}
+            reference={evaluationReference(member, period)}
+            lower={lowerEvals}
+            aiReady={openAIConfigured()}
+            model={openAIModel()}
+          />
         </section>
       )}
 
@@ -181,12 +179,12 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
                     <th className="px-3 py-2 text-right font-medium">목표 작성</th>
                     <th className="px-3 py-2 text-right font-medium">퇴근 정리</th>
                     <th className="px-3 py-2 text-right font-medium">목표 완료</th>
-                    <th className="px-3 py-2 text-right font-medium">주간 항목</th>
+                    <th className="px-3 py-2 text-center font-medium">주간 보고</th>
                     <th className="px-4 py-2 text-left font-medium">평가</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {weeks.map(({ week, stats: s, review }) => {
+                  {weeks.map(({ week, stats: s, reported, review }) => {
                     const rate = pct(s.tasksDone, s.tasksTotal);
                     return (
                       <tr key={week} className="border-b last:border-b-0">
@@ -203,7 +201,7 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
                         <td className="px-3 py-2.5 text-right tabular-nums">{s.workDays ? `${s.plannedDays}/${s.workDays}일` : "—"}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{s.workDays ? `${s.wrapDays}/${s.workDays}일` : "—"}</td>
                         <td className={cn("px-3 py-2.5 text-right tabular-nums", rate != null && rate < 50 && "text-amber-700")}>{rate == null ? "—" : `${rate}% (${s.tasksDone}/${s.tasksTotal})`}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{s.itemsTotal ? `${s.itemsDone}/${s.itemsTotal}` : "—"}</td>
+                        <td className="px-3 py-2.5 text-center">{reported ? <span className="text-xs font-medium text-emerald-700">작성</span> : <span className="text-xs text-muted-foreground">—</span>}</td>
                         <td className="px-4 py-2.5">
                           {!review ? (
                             <span className="text-xs text-muted-foreground">{canSeeReviews ? "미작성" : "—"}</span>

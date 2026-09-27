@@ -1,66 +1,58 @@
 import Link from "next/link";
-import { CheckCircle2Icon, ChevronLeftIcon, ChevronRightIcon, SigmaIcon } from "lucide-react";
-import { QUARTERS, periodRange, quarterKey, type EvaluationStatus } from "@/lib/evaluations/types";
+import { CheckCircle2Icon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { EVAL_LEVELS, LEVEL_LABEL, currentPeriod, levelOf, periodLabel, periodRange, shiftPeriod, type EvaluationStatus } from "@/lib/evaluations/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
   memberId: number;
-  year: number;
-  /** Selected quarter key, or null when the yearly average is shown. */
-  period: string | null;
-  minYear: number;
-  maxYear: number;
+  period: string;
   today: string;
-  saved: Map<string, { status: EvaluationStatus; total: number | null }>;
+  /** Earliest selectable date (member's join date). */
+  minDate: string;
+  saved: { status: EvaluationStatus; total: number | null } | undefined;
 };
 
-/** Year switcher + Q1–Q4 + 연평균 tabs. Quarters that haven't started are disabled. */
-export function EvaluationNav({ memberId, year, period, minYear, maxYear, today, saved }: Props) {
+/** 주간 · 월간 · 분기 · 연간 tabs + ‹ period › navigation. Future periods can't be opened. */
+export function EvaluationNav({ memberId, period, today, minDate, saved }: Props) {
+  const level = levelOf(period)!;
   const href = (p: string) => `/team/members/${memberId}?period=${p}#evaluation`;
-  const tab = "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors";
+  const prev = shiftPeriod(period, -1);
+  const next = shiftPeriod(period, 1);
+  const canPrev = periodRange(prev).end >= minDate;
+  const canNext = periodRange(next).start <= today;
+  const now = currentPeriod(level, today);
+  const arrow = "grid size-8 place-items-center rounded-full border bg-card text-muted-foreground hover:bg-muted";
   return (
-    <nav className="flex flex-wrap items-center gap-2" aria-label="평가 기간">
-      <div className="mr-1 flex items-center gap-0.5 rounded-full border bg-card px-1 py-0.5">
-        {year > minYear ? (
-          <Link href={href(quarterKey(year - 1, 4))} scroll={false} aria-label="이전 연도" className="rounded-full p-1 text-muted-foreground hover:bg-muted">
-            <ChevronLeftIcon className="size-4" />
+    <nav className="flex flex-wrap items-center gap-3" aria-label="평가 기간">
+      <div className="flex rounded-full border bg-muted/50 p-0.5 text-sm">
+        {EVAL_LEVELS.map((l) => (
+          <Link key={l} href={href(currentPeriod(l, today))} scroll={false} aria-current={l === level ? "page" : undefined} className={cn("rounded-full px-3 py-1 transition-colors", l === level ? "bg-card font-semibold text-accent-foreground shadow-xs" : "text-muted-foreground hover:text-foreground")}>
+            {LEVEL_LABEL[l]}
           </Link>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5">
+        {canPrev ? (
+          <Link href={href(prev)} scroll={false} aria-label="이전" className={arrow}><ChevronLeftIcon className="size-4" /></Link>
         ) : (
-          <span className="p-1 text-muted-foreground/40"><ChevronLeftIcon className="size-4" /></span>
+          <span className={cn(arrow, "opacity-40")}><ChevronLeftIcon className="size-4" /></span>
         )}
-        <span className="px-1.5 text-sm font-bold tabular-nums">{year}년</span>
-        {year < maxYear ? (
-          <Link href={href(quarterKey(year + 1, 1))} scroll={false} aria-label="다음 연도" className="rounded-full p-1 text-muted-foreground hover:bg-muted">
-            <ChevronRightIcon className="size-4" />
-          </Link>
+        <span className="flex min-w-40 items-center justify-center gap-1.5 text-sm font-semibold">
+          {periodLabel(period)}
+          {saved?.status === "final" && <CheckCircle2Icon className="size-4 text-emerald-600" />}
+          {saved?.total != null && <span className="text-xs font-normal text-muted-foreground tabular-nums">{saved.total.toFixed(1)}</span>}
+        </span>
+        {canNext ? (
+          <Link href={href(next)} scroll={false} aria-label="다음" className={arrow}><ChevronRightIcon className="size-4" /></Link>
         ) : (
-          <span className="p-1 text-muted-foreground/40"><ChevronRightIcon className="size-4" /></span>
+          <span className={cn(arrow, "opacity-40")}><ChevronRightIcon className="size-4" /></span>
+        )}
+        {period !== now && (
+          <Link href={href(now)} scroll={false} className="rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground hover:bg-muted">
+            {level === "week" ? "이번 주" : level === "month" ? "이번 달" : level === "quarter" ? "이번 분기" : "올해"}
+          </Link>
         )}
       </div>
-      {QUARTERS.map((q) => {
-        const key = quarterKey(year, q);
-        const s = saved.get(key);
-        const future = periodRange(key).start > today;
-        const active = key === period;
-        if (future) {
-          return (
-            <span key={key} className={cn(tab, "cursor-not-allowed border-dashed text-muted-foreground/50")} title="아직 시작하지 않은 분기">
-              {q}분기
-            </span>
-          );
-        }
-        return (
-          <Link key={key} href={href(key)} scroll={false} aria-current={active ? "page" : undefined} className={cn(tab, active ? "border-brand/40 bg-accent font-semibold text-accent-foreground" : "bg-card text-muted-foreground hover:bg-muted")}>
-            {q}분기
-            {s?.status === "final" && <CheckCircle2Icon className="size-3.5 text-emerald-600" />}
-            {s?.total != null && <span className="text-xs tabular-nums">{s.total.toFixed(1)}</span>}
-          </Link>
-        );
-      })}
-      <Link href={href(String(year))} scroll={false} aria-current={period === null ? "page" : undefined} className={cn(tab, period === null ? "border-brand/40 bg-accent font-semibold text-accent-foreground" : "bg-card text-muted-foreground hover:bg-muted")}>
-        <SigmaIcon className="size-3.5" />
-        연평균
-      </Link>
     </nav>
   );
 }
