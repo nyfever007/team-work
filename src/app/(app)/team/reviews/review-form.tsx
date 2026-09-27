@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowRightIcon, CheckCheckIcon, EyeIcon, Loader2Icon, MessageCircleReplyIcon, PencilIcon, SaveIcon, SendIcon, SparklesIcon, Undo2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { generateMemberReview, saveMemberReview } from "@/lib/member-reviews/actions";
-import { RATINGS, RATING_CLASS, RATING_LABEL, actionLines, type MemberReviewInput, type MemberReviewStatus } from "@/lib/member-reviews/types";
+import { RATINGS, RATING_CLASS, RATING_LABEL, type MemberReviewInput, type MemberReviewStatus } from "@/lib/member-reviews/types";
 import { ReviewView } from "@/components/member-reviews/review-view";
 import { EASE } from "@/components/motion";
 import {
@@ -31,7 +31,6 @@ type Props = {
   memberId: number;
   memberName: string;
   weekStart: string;
-  nextWeekLabel: string;
   initial: MemberReviewInput;
   status: MemberReviewStatus | null;
   meta: { reviewerName: string; updatedAt: number; sharedAt: number | null; ackAt: number | null; model: string | null } | null;
@@ -48,13 +47,12 @@ const same = (a: MemberReviewInput, b: MemberReviewInput) => a.summary === b.sum
 const isEmpty = (v: MemberReviewInput) => !v.summary.trim() && !v.strengths.trim() && !v.improvements.trim() && !v.nextActions.trim();
 
 export function ReviewForm(props: Props) {
-  const { memberId, memberName, weekStart, nextWeekLabel, aiReady, model, hasRecords, sourceText, nextPending, reply, meta } = props;
+  const { memberId, memberName, weekStart, aiReady, model, hasRecords, sourceText, nextPending, reply, meta } = props;
   const [value, setValue] = useState<MemberReviewInput>(props.initial);
   const [saved, setSaved] = useState<MemberReviewInput>(props.initial);
   const [status, setStatus] = useState<MemberReviewStatus | null>(props.status);
   const [aiModel, setAiModel] = useState<string | null>(null);
   const [instructions, setInstructions] = useState("");
-  const [assignNext, setAssignNext] = useState(props.status !== "shared");
   const [preview, setPreview] = useState(props.status === "shared");
   const [confirmAi, setConfirmAi] = useState(false);
   const [showSource, setShowSource] = useState(false);
@@ -64,7 +62,6 @@ export function ReviewForm(props: Props) {
   const busy = generating || saving;
   const dirty = !same(value, saved);
   const set = <K extends keyof MemberReviewInput>(k: K, v: MemberReviewInput[K]) => setValue((p) => ({ ...p, [k]: v }));
-  const actions = actionLines(value.nextActions);
 
   const generate = () =>
     startGenerate(async () => {
@@ -83,14 +80,13 @@ export function ReviewForm(props: Props) {
   const save = (share: boolean) =>
     startSave(async () => {
       try {
-        const r = await saveMemberReview(memberId, weekStart, value, { share, assignNext: share && assignNext, model: aiModel });
+        const r = await saveMemberReview(memberId, weekStart, value, { share, model: aiModel });
         if (!r.ok) return void toast.error(r.error);
         setSaved(value);
         setStatus(share ? "shared" : "draft");
         setAiModel(null);
         if (share) {
           setPreview(true);
-          setAssignNext(false);
           setJustShared(true);
         }
         toast.success(r.message);
@@ -204,15 +200,6 @@ export function ReviewForm(props: Props) {
                 <Field id="nextActions" label="다음 주에 해 주세요" hint="한 줄에 하나씩">
                   <Textarea id="nextActions" value={value.nextActions} onChange={(e) => set("nextActions", e.target.value)} rows={3} maxLength={3000} placeholder={"결제 API 테스트 커버리지 80% 달성\n매일 퇴근 전 정리 작성"} />
                 </Field>
-                {actions.length > 0 && (
-                  <label className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
-                    <input type="checkbox" checked={assignNext} onChange={(e) => setAssignNext(e.target.checked)} className="mt-0.5 size-4 accent-[var(--brand)]" />
-                    <span>
-                      공유할 때 위 {actions.length}개 항목을 {memberName}님의 <b>다음 주({nextWeekLabel}~) 항목</b>으로 지정
-                      <span className="block text-xs text-muted-foreground">이미 같은 제목의 항목이 있으면 건너뜁니다.</span>
-                    </span>
-                  </label>
-                )}
               </motion.div>
             )}
           </AnimatePresence>

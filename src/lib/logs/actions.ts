@@ -1,5 +1,6 @@
 "use server";
 
+import { isBlankReport } from "./template";
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/auth/dal";
 import { isValidKey, weekStartOf } from "@/lib/dates";
@@ -55,7 +56,9 @@ export async function saveWeeklyReport(
     if (!isValidKey(weekStart) || weekStartOf(weekStart) !== weekStart) {
       return { ok: false, error: "주차가 올바르지 않습니다." };
     }
-    const text = readText(formData, "text");
+    const raw = readText(formData, "text");
+    // An untouched outline is not a report (see WEEKLY_REPORT_TEMPLATE).
+    const text = field === "result" && isBlankReport(raw) ? "" : raw;
     const now = new Date();
     const stamp = field === "plan" ? { planUpdatedAt: now } : { resultUpdatedAt: now };
 

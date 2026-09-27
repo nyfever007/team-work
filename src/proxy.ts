@@ -26,6 +26,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except Next internals and static files.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|woff2?)$).*)"],
+  // Run on everything except Next internals, static files and /api/uploads (streams large bodies; the route does its
+  // own session + team check, and going through the proxy would buffer the body up to proxyClientMaxBodySize).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/uploads|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|woff2?)$).*)"],
 };

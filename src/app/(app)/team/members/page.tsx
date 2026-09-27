@@ -46,11 +46,11 @@ export default async function TeamMembersPage() {
       if (!cur || r.weekStart > cur.weekStart) latestReview.set(r.memberId, r);
     }
   }
-  // Latest finalized 인사평가 per member — only for members this user may evaluate (never their own).
+  // Latest finalized quarterly 인사평가 per member — only for members this user may evaluate (never their own).
   const reviewer = reviewerContext(user);
   const latestEval = new Map<number, { period: string; total: number | null }>();
   if (ids.length) {
-    for (const e of db.select({ memberId: schema.memberEvaluations.memberId, period: schema.memberEvaluations.period, total: schema.memberEvaluations.total }).from(schema.memberEvaluations).where(and(eq(schema.memberEvaluations.status, "final"), inArray(schema.memberEvaluations.memberId, ids))).all()) {
+    for (const e of db.select({ memberId: schema.memberEvaluations.memberId, period: schema.memberEvaluations.period, total: schema.memberEvaluations.total }).from(schema.memberEvaluations).where(and(eq(schema.memberEvaluations.status, "final"), eq(schema.memberEvaluations.level, "quarter"), inArray(schema.memberEvaluations.memberId, ids))).all()) {
       const cur = latestEval.get(e.memberId);
       if (!cur || e.period > cur.period) latestEval.set(e.memberId, e);
     }

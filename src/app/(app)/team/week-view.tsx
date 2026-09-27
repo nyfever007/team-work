@@ -6,9 +6,7 @@ import { teamScopedMembers } from "@/lib/members/access";
 import { addDays, formatKoDate, formatTime, weekStartOf } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
 import { LEAVE_BADGE_CLASS, LEAVE_LABEL } from "@/lib/leaves/types";
-import { groupBy, weeklyItemsFor } from "@/lib/plans/queries";
 import { groupTasks, tasksFor } from "@/lib/tasks/queries";
-import { TASK_STATUS_CLASS, TASK_STATUS_MARK } from "@/lib/tasks/types";
 import { isWorkingDay, loadHolidays, weekInfo } from "@/lib/workdays";
 import { TaskLines } from "@/components/task-lines";
 import { Button } from "@/components/ui/button";
@@ -17,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { LeaderBadge } from "@/components/leader-badge";
 
 function Text({ value }: { value: string }) {
-  if (!value.trim()) return <span className="text-muted-foreground">작성되지 않음</span>;
+  if (!value.trim()) return <span className="text-muted-foreground">아직 작성하지 않았습니다.</span>;
   return <span className="whitespace-pre-wrap">{value}</span>;
 }
 
@@ -39,10 +37,10 @@ export function WeekView({ user, weekStart, today, toggle }: { user: SafeUser; w
 
   const logKey = (m: number, d: string) => `${m}:${d}`;
   const taskMap = groupTasks(tasksFor(ids, weekStart, weekEnd));
-  const weeklyByMember = groupBy(weeklyItemsFor(ids, weekStart), (w) => w.memberId);
   const logMap = new Map(logs.map((l) => [logKey(l.memberId, l.date), l]));
   const leaveMap = new Map(leaves.map((l) => [logKey(l.memberId, l.date), l]));
   const reportMap = new Map(reports.map((r) => [r.memberId, r]));
+  const weekTasksOf = (memberId: number) => [...taskMap.entries()].filter(([k]) => k.startsWith(`${memberId}:`)).flatMap(([, v]) => v);
 
   // Show Mon–Fri always; weekend days only when someone wrote something.
   const visibleDays = week.days.filter((d, i) => i < 5 || logs.some((l) => l.date === d) || [...taskMap.keys()].some((k) => k.endsWith(`:${d}`)));
@@ -90,31 +88,13 @@ export function WeekView({ user, weekStart, today, toggle }: { user: SafeUser; w
                 {mine && <span className="rounded bg-muted px-1.5 py-0.5 text-xs">나</span>}
               </CardTitle>
               <CardDescription>
-                주간 항목 {(weeklyByMember.get(m.id) ?? []).filter((w) => w.status === "done").length}/{(weeklyByMember.get(m.id) ?? []).length} 완료 · 주간 성과 {formatTime(report?.resultUpdatedAt) ?? "미작성"}
+                이번 주 목표 완료 {weekTasksOf(m.id).filter((t) => t.status === "done").length}/{weekTasksOf(m.id).length} · 주간 보고 {report?.result.trim() ? `작성 ${formatTime(report.resultUpdatedAt) ?? ""}` : "미작성"}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-md bg-muted/40 p-3 text-sm">
-                  <div className="mb-1 text-xs font-medium text-muted-foreground">이번 주 할 일</div>
-                  {(weeklyByMember.get(m.id) ?? []).length === 0 ? (
-                    <Text value={report?.plan ?? ""} />
-                  ) : (
-                    <ul className="grid gap-0.5">
-                      {(weeklyByMember.get(m.id) ?? []).map((w) => (
-                        <li key={w.id} className="flex items-start gap-1.5">
-                          <span className={cn("shrink-0", TASK_STATUS_CLASS[w.status])}>{TASK_STATUS_MARK[w.status]}</span>
-                          <span className={cn(w.status === "done" && "text-muted-foreground line-through")}>{w.title}</span>
-                          {w.assignedByName && <span className="rounded bg-violet-100 px-1 text-[10px] text-violet-900">{w.assignedByName} 지정</span>}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div className="rounded-md bg-muted/40 p-3 text-sm">
-                  <div className="mb-1 text-xs font-medium text-muted-foreground">이번 주 성과</div>
-                  <Text value={report?.result ?? ""} />
-                </div>
+              <div className="rounded-md bg-brand-soft/40 p-3 text-sm">
+                <div className="mb-1 text-xs font-medium text-muted-foreground">주간 보고</div>
+                <Text value={report?.result ?? ""} />
               </div>
               <div className="overflow-hidden rounded-md border">
                 <table className="w-full text-sm">

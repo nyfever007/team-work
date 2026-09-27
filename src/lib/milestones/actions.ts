@@ -7,6 +7,7 @@ import { isValidKey, parseKey } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
 import { MILESTONE_STATUSES, type MilestoneStatus } from "@/lib/db/schema";
 import { milestoneAccess } from "./permissions";
+import { taskProgress } from "./task-types";
 
 export type MilestoneFormState =
   | { ok: true; id: number; message: string }
@@ -16,6 +17,12 @@ export type MilestoneFormState =
 function revalidate() {
   // Pending approvals show up in the header badge and on 오늘, so refresh the whole tree.
   revalidatePath("/", "layout");
+}
+
+/** With 작업, progress is derived from them (검수 완료 / 전체) and manual input is ignored. */
+function derivedProgress(milestoneId: number): number | null {
+  const tasks = db.select({ status: schema.milestoneTasks.status }).from(schema.milestoneTasks).where(eq(schema.milestoneTasks.milestoneId, milestoneId)).all();
+  return tasks.length ? taskProgress(tasks) : null;
 }
 
 function readForm(formData: FormData) {
@@ -98,6 +105,8 @@ export async function updateMilestone(id: number, _prev: MilestoneFormState, for
     const { raw, error, data } = readForm(formData);
     if (error) return { ok: false, error, values: raw };
     if (data.teamId !== existing.teamId && !access.canCreateFor(data.teamId)) return { ok: false, error: "그 팀으로 옮길 권한이 없습니다.", values: raw };
+    const auto = derivedProgress(id);
+    if (auto != null) data.progress = auto;
     // A proposer fixing a rejected proposal sends it back for approval.
     const resubmit = existing.approval === "rejected" && !access.canApprove({ teamId: data.teamId });
 
@@ -150,8 +159,8 @@ export async function addMilestoneUpdate(id: number, _prev: UpdateFormState, for
     if (!note) return { ok: false, error: "현황 내용을 입력하세요." };
     if (note.length > 2000) return { ok: false, error: "2000자 이내로 입력하세요." };
     if (!MILESTONE_STATUSES.includes(status)) return { ok: false, error: "상태가 올바르지 않습니다." };
-    if (!Number.isInteger(progressRaw) || progressRaw < 0 || progressRaw > 100) return { ok: false, error: "진행률은 0~100 사이 정수로 입력하세요." };
-    const progress = status === "done" ? 100 : progressRaw;
+    if (!Number.isFinite(progressRaw) || progressRaw < 0 || progressRaw > 100) return { ok: false, error: "진행률은 0~100 사이 정수로 입력하세요." };
+    const progress = derivedProgress(id) ?? (status === "done" ? 100 : progressRaw);
 
     db.transaction((tx) => {
       tx.insert(schema.milestoneUpdates).values({ milestoneId: id, authorId: user.id, authorName: user.name, note, status, progress }).run();

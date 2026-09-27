@@ -2,11 +2,16 @@ import { sql } from "drizzle-orm";
 import { index, integer, real, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { LEAVE_TYPES, REQUEST_STATUSES } from "@/lib/leaves/types";
 import { MILESTONE_APPROVALS, MILESTONE_STATUSES } from "@/lib/milestones/types";
-import { EVALUATION_STATUSES } from "@/lib/evaluations/types";
+import { MILESTONE_TASK_STATUSES } from "@/lib/milestones/task-types";
+import { EVAL_LEVELS, EVALUATION_STATUSES } from "@/lib/evaluations/types";
 import { CURRENCIES, VAT_MODES } from "@/lib/general/types";
 import { DINNER_STAGES } from "@/lib/dinner/types";
 import { MEMBER_REVIEW_STATUSES } from "@/lib/member-reviews/types";
 import { TASK_STATUSES } from "@/lib/tasks/types";
+import { DECISION_STATUSES, POST_CATEGORIES, REACTION_KINDS } from "@/lib/board/types";
+import { ACTION_OWNERS, ONE_ON_ONE_STATUSES } from "@/lib/one-on-one/types";
+import { RETRO_KINDS, RETRO_STATUSES } from "@/lib/retro/types";
+import { GROWTH_STATUSES } from "@/lib/growth/types";
 
 // Enum constants are defined in client-safe modules (lib/*/types.ts) so client
 // components never import this drizzle schema. Re-exported here for server code.
@@ -112,6 +117,8 @@ export const dailyTasks = sqliteTable(
     status: text("status", { enum: TASK_STATUSES }).notNull().default("todo"),
     note: text("note").notNull().default(""), // end-of-day remark for this item
     weeklyItemId: integer("weekly_item_id").references((): AnySQLiteColumn => weeklyItems.id, { onDelete: "set null" }),
+    // Pulled from a milestone 작업 ("오늘로"). No FK on purpose (ADD COLUMN caveat); a dangling id just hides the chip.
+    milestoneTaskId: integer("milestone_task_id"),
     position: integer("position").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
@@ -180,8 +187,8 @@ export const memberReviews = sqliteTable(
 );
 
 /**
- * 인사평가: leader's (or admin's) quarterly evaluation of a member, one per member per quarter ("2026-Q3").
- * The yearly average is computed from finalized quarters, not stored.
+ * 인사평가 at four levels (주간 → 월간 → 분기 → 연간), one row per member per period. Each level's AI draft summarises
+ * the level below. Private HR data — only admins and the member's team leader can read it; members never see it.
  * Private HR data — only admins and the member's team leader can read it; members never see it.
  */
 export const memberEvaluations = sqliteTable(
@@ -191,7 +198,9 @@ export const memberEvaluations = sqliteTable(
     memberId: integer("member_id")
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
-    period: text("period").notNull(), // "2026-Q3"
+    // Level is implied by the key: week "2026-09-21" (Monday) · month "2026-09" · quarter "2026-Q3" · year "2026".
+    level: text("level", { enum: EVAL_LEVELS }).notNull().default("quarter"),
+    period: text("period").notNull(),
     evaluatorId: integer("evaluator_id").references(() => users.id, { onDelete: "set null" }),
     evaluatorName: text("evaluator_name").notNull(),
     scores: text("scores", { mode: "json" }).$type<Record<string, number>>().notNull().default({}), // criterion key → 1-10
@@ -204,6 +213,7 @@ export const memberEvaluations = sqliteTable(
     improvements: text("improvements").notNull().default(""),
     status: text("status", { enum: EVALUATION_STATUSES }).notNull().default("draft"),
     finalizedAt: integer("finalized_at", { mode: "timestamp_ms" }),
+    finalGrade: text("final_grade"), // 고과 (quarter only): leader's final S–D after absolute/relative review
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
@@ -522,6 +532,37 @@ export const milestones = sqliteTable("milestones", {
     .default(sql`(unixepoch() * 1000)`),
 });
 
+/**
+ * 작업 needed to reach a milestone. Assignee reports completion (review); the milestone owner — or the team leader when
+ * there is no owner — verifies (approved) or sends it back. Milestone progress = approved / all tasks.
+ */
+export const milestoneTasks = sqliteTable(
+  "milestone_tasks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    milestoneId: integer("milestone_id")
+      .notNull()
+      .references(() => milestones.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    assigneeId: integer("assignee_id").references(() => members.id, { onDelete: "set null" }),
+    dueDate: text("due_date"), // YYYY-MM-DD, optional
+    status: text("status", { enum: MILESTONE_TASK_STATUSES }).notNull().default("todo"),
+    reviewNote: text("review_note").notNull().default(""), // why it was sent back
+    reportedAt: integer("reported_at", { mode: "timestamp_ms" }),
+    approvedAt: integer("approved_at", { mode: "timestamp_ms" }),
+    approvedByName: text("approved_by_name"),
+    position: integer("position").notNull().default(0),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("milestone_tasks_milestone").on(t.milestoneId), index("milestone_tasks_assignee").on(t.assigneeId)],
+);
+
 /** Status log entries for a milestone. */
 export const milestoneUpdates = sqliteTable("milestone_updates", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -592,12 +633,317 @@ export const meetingNotes = sqliteTable(
   (t) => [uniqueIndex("meeting_notes_team_week").on(t.teamId, t.weekStart)],
 );
 
+// ── 라운지 (team-only collaboration) ────────────────────────────────────────
+
+/** Team 게시판 post. Always belongs to one team; only that team (and admin) can read it. */
+export const posts = sqliteTable(
+  "posts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    category: text("category", { enum: POST_CATEGORIES }).notNull(),
+    title: text("title").notNull(),
+    // Plain-text version of the body (search, excerpts, AI sources). Rich posts also have `bodyHtml`.
+    body: text("body").notNull().default(""),
+    // Sanitized HTML from the Tiptap editor (lib/board/html.ts). Empty for old plain-text posts.
+    bodyHtml: text("body_html").notNull().default(""),
+    link: text("link").notNull().default(""),
+    // AI 프롬프트 posts
+    prompt: text("prompt").notNull().default(""),
+    promptUse: text("prompt_use").notNull().default(""), // 용도
+    promptModel: text("prompt_model").notNull().default(""),
+    // 의사결정 posts
+    decisionStatus: text("decision_status", { enum: DECISION_STATUSES }),
+    decidedAt: text("decided_at"), // YYYY-MM-DD
+    // 질문 posts: the accepted answer (no FK; cleared in code when the comment is deleted)
+    acceptedCommentId: integer("accepted_comment_id"),
+    pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+    authorUserId: integer("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    authorMemberId: integer("author_member_id").references(() => members.id, { onDelete: "set null" }),
+    authorName: text("author_name").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("posts_team_idx").on(t.teamId, t.createdAt), index("posts_author_idx").on(t.authorMemberId)],
+);
+
+export const postComments = sqliteTable(
+  "post_comments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    postId: integer("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    authorUserId: integer("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    authorMemberId: integer("author_member_id").references(() => members.id, { onDelete: "set null" }),
+    authorName: text("author_name").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("post_comments_post_idx").on(t.postId)],
+);
+
+/** One reaction per member per kind per post. Only members react (they feed 공유 기여). */
+export const postReactions = sqliteTable(
+  "post_reactions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    postId: integer("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: REACTION_KINDS }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [uniqueIndex("post_reactions_unique").on(t.postId, t.memberId, t.kind), index("post_reactions_member_idx").on(t.memberId)],
+);
+
+/**
+ * Files uploaded from the 게시판 editor, stored on local disk under UPLOAD_DIR (lib/uploads/storage.ts) and served by
+ * /api/uploads/[id] to members of `teamId` only. `postId` is set when a saved post references the file; unreferenced
+ * uploads are swept after a day.
+ */
+export const uploads = sqliteTable(
+  "uploads",
+  {
+    id: text("id").primaryKey(), // random UUID; also the URL key
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    postId: integer("post_id").references(() => posts.id, { onDelete: "set null" }),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind", { enum: ["image", "video"] }).notNull(),
+    mime: text("mime").notNull(),
+    size: integer("size").notNull(),
+    path: text("path").notNull(), // relative to UPLOAD_DIR
+    originalName: text("original_name").notNull().default(""),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("uploads_post_idx").on(t.postId), index("uploads_team_idx").on(t.teamId)],
+);
+
+/** 1:1 미팅 between a team leader and a member. `privateNotes` is leader-only; the rest is shared with the member. */
+export const oneOnOnes = sqliteTable(
+  "one_on_ones",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    date: text("date").notNull(), // YYYY-MM-DD
+    status: text("status", { enum: ONE_ON_ONE_STATUSES }).notNull().default("planned"),
+    agenda: text("agenda").notNull().default(""), // leader's topics
+    memberAgenda: text("member_agenda").notNull().default(""), // topics the member wants to raise
+    notes: text("notes").notNull().default(""), // 논의·합의 (shared)
+    privateNotes: text("private_notes").notNull().default(""), // leader only
+    leaderUserId: integer("leader_user_id").references(() => users.id, { onDelete: "set null" }),
+    leaderName: text("leader_name").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("one_on_ones_member_idx").on(t.memberId, t.date)],
+);
+
+/** Follow-up from a 1:1. Open actions carry over to the next meeting until done. */
+export const oneOnOneActions = sqliteTable(
+  "one_on_one_actions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    meetingId: integer("meeting_id")
+      .notNull()
+      .references(() => oneOnOnes.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    owner: text("owner", { enum: ACTION_OWNERS }).notNull().default("member"),
+    doneAt: integer("done_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("one_on_one_actions_member_idx").on(t.memberId)],
+);
+
+/** 팀 회고 board (KPT). `anonymous` hides item authors in the UI (the id is kept only for edit/delete rights). */
+export const retros = sqliteTable(
+  "retros",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    milestoneId: integer("milestone_id").references(() => milestones.id, { onDelete: "set null" }),
+    anonymous: integer("anonymous", { mode: "boolean" }).notNull().default(true),
+    status: text("status", { enum: RETRO_STATUSES }).notNull().default("open"),
+    summary: text("summary").notNull().default(""), // AI summary, leader-edited
+    model: text("model"),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdByName: text("created_by_name").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("retros_team_idx").on(t.teamId)],
+);
+
+export const retroItems = sqliteTable(
+  "retro_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    retroId: integer("retro_id")
+      .notNull()
+      .references(() => retros.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: RETRO_KINDS }).notNull(),
+    body: text("body").notNull(),
+    authorMemberId: integer("author_member_id").references(() => members.id, { onDelete: "set null" }),
+    authorName: text("author_name").notNull(),
+    // Try items become team actions: an owner and a done mark.
+    ownerMemberId: integer("owner_member_id").references(() => members.id, { onDelete: "set null" }),
+    doneAt: integer("done_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("retro_items_retro_idx").on(t.retroId)],
+);
+
+export const retroVotes = sqliteTable(
+  "retro_votes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => retroItems.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+  },
+  (t) => [uniqueIndex("retro_votes_unique").on(t.itemId, t.memberId)],
+);
+
+/**
+ * Weekly anonymous 펄스 체크 (1–5). memberId is stored only so a member can change their own answer;
+ * nothing ever shows it — leaders see team aggregates once PULSE_MIN_RESPONSES answered.
+ */
+export const pulseResponses = sqliteTable(
+  "pulse_responses",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    weekStart: text("week_start").notNull(),
+    workload: integer("workload").notNull(),
+    mood: integer("mood").notNull(),
+    comment: text("comment").notNull().default(""),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [uniqueIndex("pulse_member_week").on(t.memberId, t.weekStart), index("pulse_team_week").on(t.teamId, t.weekStart)],
+);
+
+/** Team 온보딩 checklist item (leader-maintained). */
+export const onboardingItems = sqliteTable(
+  "onboarding_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    postId: integer("post_id").references(() => posts.id, { onDelete: "set null" }), // optional 게시판 reference
+    position: integer("position").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("onboarding_items_team_idx").on(t.teamId)],
+);
+
+export const onboardingChecks = sqliteTable(
+  "onboarding_checks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => onboardingItems.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [uniqueIndex("onboarding_checks_unique").on(t.itemId, t.memberId)],
+);
+
+/** 성장 계획: a member's quarterly growth goal ("2026-Q3"), with the leader's comment. */
+export const growthGoals = sqliteTable(
+  "growth_goals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    quarter: text("quarter").notNull(),
+    title: text("title").notNull(),
+    plan: text("plan").notNull().default(""), // how (actions, resources)
+    status: text("status", { enum: GROWTH_STATUSES }).notNull().default("planned"),
+    reflection: text("reflection").notNull().default(""), // member's result/reflection
+    leaderComment: text("leader_comment").notNull().default(""),
+    leaderName: text("leader_name"),
+    position: integer("position").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("growth_goals_member_idx").on(t.memberId, t.quarter)],
+);
+
 export type User = typeof users.$inferSelect;
 export type MeetingNote = typeof meetingNotes.$inferSelect;
 export type TeamReport = typeof teamReports.$inferSelect;
 /** Raw milestones row. Pages use `MilestoneRow` from "@/lib/milestones/types" (joined with team name). */
 export type MilestoneRecord = typeof milestones.$inferSelect;
 export type MilestoneUpdate = typeof milestoneUpdates.$inferSelect;
+export type MilestoneTask = typeof milestoneTasks.$inferSelect;
 export type DailyLog = typeof dailyLogs.$inferSelect;
 export type DailyTask = typeof dailyTasks.$inferSelect;
 export type WeeklyItem = typeof weeklyItems.$inferSelect;
@@ -617,3 +963,14 @@ export type Team = typeof teams.$inferSelect;
 /** Raw members row. Most code should use `Member` from "@/lib/members/types" (joined with team). */
 export type MemberRecord = typeof members.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
+export type Post = typeof posts.$inferSelect;
+export type Upload = typeof uploads.$inferSelect;
+export type PostComment = typeof postComments.$inferSelect;
+export type PostReaction = typeof postReactions.$inferSelect;
+export type OneOnOne = typeof oneOnOnes.$inferSelect;
+export type OneOnOneAction = typeof oneOnOneActions.$inferSelect;
+export type Retro = typeof retros.$inferSelect;
+export type RetroItem = typeof retroItems.$inferSelect;
+export type PulseResponse = typeof pulseResponses.$inferSelect;
+export type OnboardingItem = typeof onboardingItems.$inferSelect;
+export type GrowthGoal = typeof growthGoals.$inferSelect;

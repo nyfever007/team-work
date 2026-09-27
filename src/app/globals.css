@@ -122,3 +122,50 @@
       var(--card);
   }
 }
+
+/* 게시판 rich text (Tiptap editor + rendered posts) */
+.rich-content {
+  --tw-prose-links: var(--brand);
+  color: var(--foreground);
+}
+.rich-content :where(img, video) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.75rem 0;
+  border-radius: 0.625rem;
+  border: 1px solid var(--border);
+}
+.rich-content video {
+  width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+  background: #000;
+}
+.rich-content div[data-youtube-video] {
+  margin: 0.75rem 0;
+}
+.rich-content iframe {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 0.625rem;
+}
+.rich-content a {
+  text-underline-offset: 2px;
+}
+.rich-content > :first-child {
+  margin-top: 0;
+}
+.rich-content.ProseMirror :where(img, video, div[data-youtube-video]).ProseMirror-selectednode {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.rich-content.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}

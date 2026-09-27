@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ReviewForm } from "./review-form";
+import { WeeklyEvaluationPanel } from "./weekly-evaluation";
+import { evaluationFor } from "@/lib/evaluations/queries";
 
 export const metadata: Metadata = { title: "주간 리뷰" };
 
@@ -165,11 +167,12 @@ export default async function MemberReviewsPage({ searchParams }: PageProps<"/te
 function Workspace({ week, review, stats: s, today, nextPending }: { week: MemberWeek; review: MemberReview | undefined; stats: MemberWeekStats; today: string; nextPending: { name: string; href: string } | null }) {
   const m = week.member;
   const records = hasRecords(week);
+  const weekEval = evaluationFor(m.id, week.weekStart); // private 주간 인사평가 (page only lists members the user may review)
   const tiles = [
     { label: "목표 작성", value: `${s.plannedDays}/${s.workDays}일`, ratio: s.workDays ? s.plannedDays / s.workDays : 0 },
     { label: "퇴근 정리", value: `${s.wrapDays}/${s.workDays}일`, ratio: s.workDays ? s.wrapDays / s.workDays : 0 },
     { label: "일일 목표 완료", value: `${s.tasksDone}/${s.tasksTotal}`, ratio: s.tasksTotal ? s.tasksDone / s.tasksTotal : 0 },
-    { label: "주간 항목 완료", value: `${s.itemsDone}/${s.itemsTotal}`, ratio: s.itemsTotal ? s.itemsDone / s.itemsTotal : 0 },
+    { label: "주간 보고", value: week.result ? "작성함" : "미작성", ratio: week.result ? 1 : 0 },
   ];
 
   return (
@@ -204,10 +207,15 @@ function Workspace({ week, review, stats: s, today, nextPending }: { week: Membe
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <Card className="min-w-0 self-start">
           <CardHeader>
-            <CardTitle className="text-base font-bold">이번 주 기록</CardTitle>
-            <CardDescription>구성원이 직접 남긴 기록입니다. AI 초안도 이 내용만 근거로 씁니다.</CardDescription>
+            <CardTitle className="text-base font-bold">주간 보고 · 일일 기록</CardTitle>
+            <CardDescription>구성원의 주간 보고와 일일 목표·결과입니다. AI 초안도 이 내용만 근거로 씁니다.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5 text-sm">
+            <section>
+              <h4 className="mb-1.5 text-xs font-semibold text-muted-foreground">주간 보고</h4>
+              {week.result ? <p className="whitespace-pre-wrap rounded-lg bg-brand-soft/50 p-3">{week.result}</p> : <p className="rounded-lg border border-dashed p-3 text-muted-foreground">아직 주간 보고를 작성하지 않았습니다.</p>}
+            </section>
+
             {week.prevReview && week.prevReview.nextActions.trim() && (
               <section className="rounded-xl border border-dashed border-brand/30 p-3">
                 <h4 className="mb-1 text-xs font-semibold text-accent-foreground">지난주 요청한 할 일</h4>
@@ -225,7 +233,8 @@ function Workspace({ week, review, stats: s, today, nextPending }: { week: Membe
               </section>
             )}
 
-            <section>
+            {week.items.length > 0 && (
+              <section>
               <h4 className="mb-1.5 text-xs font-semibold text-muted-foreground">주간 항목</h4>
               {week.items.length === 0 ? (
                 <p className="text-muted-foreground">없음</p>
@@ -241,6 +250,7 @@ function Workspace({ week, review, stats: s, today, nextPending }: { week: Membe
                 </ul>
               )}
             </section>
+            )}
 
             <section>
               <h4 className="mb-1.5 text-xs font-semibold text-muted-foreground">일별 목표 · 결과</h4>
@@ -271,12 +281,6 @@ function Workspace({ week, review, stats: s, today, nextPending }: { week: Membe
               </ol>
             </section>
 
-            {week.result && (
-              <section>
-                <h4 className="mb-1.5 text-xs font-semibold text-muted-foreground">본인 작성 주간 성과</h4>
-                <p className="whitespace-pre-wrap rounded-lg bg-muted/50 p-3">{week.result}</p>
-              </section>
-            )}
 
             {week.milestones.length > 0 && (
               <section>
@@ -296,22 +300,30 @@ function Workspace({ week, review, stats: s, today, nextPending }: { week: Membe
           </CardContent>
         </Card>
 
-        <ReviewForm
-          key={`${m.id}:${week.weekStart}`}
-          memberId={m.id}
-          memberName={m.name}
-          weekStart={week.weekStart}
-          nextWeekLabel={formatKoDate(addDays(week.weekStart, 7))}
-          initial={{ summary: review?.summary ?? "", strengths: review?.strengths ?? "", improvements: review?.improvements ?? "", nextActions: review?.nextActions ?? "", rating: (review?.rating as 1 | 2 | 3 | 4 | 5 | null) ?? null }}
-          status={review?.status ?? null}
-          meta={review ? { reviewerName: review.reviewerName, updatedAt: review.updatedAt.getTime(), sharedAt: review.sharedAt?.getTime() ?? null, ackAt: review.ackAt?.getTime() ?? null, model: review.model } : null}
-          reply={review?.reply ? { text: review.reply, at: review.repliedAt?.getTime() ?? null } : null}
-          aiReady={openAIConfigured()}
-          model={openAIModel()}
-          hasRecords={records}
-          sourceText={renderMemberWeek(week)}
-          nextPending={nextPending}
-        />
+        <div className="grid min-w-0 content-start gap-4">
+          <ReviewForm
+            key={`${m.id}:${week.weekStart}`}
+            memberId={m.id}
+            memberName={m.name}
+            weekStart={week.weekStart}
+            initial={{ summary: review?.summary ?? "", strengths: review?.strengths ?? "", improvements: review?.improvements ?? "", nextActions: review?.nextActions ?? "", rating: (review?.rating as 1 | 2 | 3 | 4 | 5 | null) ?? null }}
+            status={review?.status ?? null}
+            meta={review ? { reviewerName: review.reviewerName, updatedAt: review.updatedAt.getTime(), sharedAt: review.sharedAt?.getTime() ?? null, ackAt: review.ackAt?.getTime() ?? null, model: review.model } : null}
+            reply={review?.reply ? { text: review.reply, at: review.repliedAt?.getTime() ?? null } : null}
+            aiReady={openAIConfigured()}
+            model={openAIModel()}
+            hasRecords={records}
+            sourceText={renderMemberWeek(week)}
+            nextPending={nextPending}
+          />
+          <WeeklyEvaluationPanel
+            memberId={m.id}
+            week={week.weekStart}
+            evaluation={weekEval ? { total: weekEval.total, status: weekEval.status, scores: weekEval.scores, summary: weekEval.summary, aiModel: weekEval.aiModel } : null}
+            aiReady={openAIConfigured()}
+            reviewShared={review?.status === "shared"}
+          />
+        </div>
       </div>
     </>
   );

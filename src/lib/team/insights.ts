@@ -2,23 +2,26 @@ import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { addDays, currentHourKST, todayKey, weekStartOf } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
-import type { DailyReview, DailyTask, Leave, WeeklyItem } from "@/lib/db/schema";
+import type { DailyReview, DailyTask, Leave } from "@/lib/db/schema";
 import type { Member } from "@/lib/members/types";
 import { milestonesInRange } from "@/lib/milestones/queries";
 import { isOverdue, type MilestoneRow } from "@/lib/milestones/types";
-import { weeklyItemsFor, weeklyItemsInRange } from "@/lib/plans/queries";
 import { reviewsFor } from "@/lib/reviews/queries";
 import { tasksFor } from "@/lib/tasks/queries";
-import { isWorkingDay, loadHolidays } from "@/lib/workdays";
+import { isWorkingDay, loadHolidays, weekInfo } from "@/lib/workdays";
 
-export type Attention = { key: "no_plan" | "no_week" | "overdue" | "milestone_overdue" | "no_review"; label: string; level: "warn" | "info" };
+export type Attention = { key: "no_plan" | "no_report" | "no_last_report" | "milestone_overdue" | "no_review"; label: string; level: "warn" | "info" };
 
 export type MemberInsight = {
   member: Member;
   leaveToday: Leave | null;
   tasksToday: DailyTask[];
-  weekItems: WeeklyItem[];
-  overdueItems: WeeklyItem[]; // from previous weeks, not done
+  /** This week's daily goals (Mon..today). */
+  weekTasks: DailyTask[];
+  /** This week's 주간 보고 text ("" when not written). */
+  weeklyReport: string;
+  /** Whether last week's 주간 보고 was written. */
+  lastWeekReported: boolean;
   ownedMilestones: MilestoneRow[];
   lastReview: DailyReview | null;
   reviewedToday: boolean;
@@ -31,9 +34,11 @@ export type TeamSummary = {
   members: number;
   onLeave: number;
   planned: number; // members with tasks today
+  /** This week's daily goals done / total across the team. */
   weekDone: number;
   weekTotal: number;
-  overdue: number;
+  /** Members who wrote this week's 주간 보고. */
+  reported: number;
   milestones: { active: number; overdue: number; done: number };
 };
 
@@ -46,8 +51,13 @@ export function buildInsights(members: Member[], reviewerId: number): { insights
   const ids = members.map((m) => m.id);
 
   const tasksToday = tasksFor(ids, today, today);
-  const weekItems = weeklyItemsFor(ids, weekStart);
-  const pastItems = weeklyItemsInRange(ids, addDays(weekStart, -28), addDays(weekStart, -7)).filter((w) => w.status !== "done");
+  const weekTasks = tasksFor(ids, weekStart, today);
+  const reports = ids.length
+    ? db.select().from(schema.weeklyReports).where(and(inArray(schema.weeklyReports.memberId, ids), inArray(schema.weeklyReports.weekStart, [weekStart, addDays(weekStart, -7)]))).all()
+    : [];
+  const reportOf = (memberId: number, week: string) => reports.find((r) => r.memberId === memberId && r.weekStart === week)?.result.trim() ?? "";
+  // 주간 보고 is due from the week's last working day.
+  const lastWorkingDay = weekInfo(weekStart, holidays).lastWorkingDay ?? addDays(weekStart, 4);
   const leaves = ids.length ? db.select().from(schema.leaves).where(and(inArray(schema.leaves.memberId, ids), eq(schema.leaves.date, today))).all() : [];
   const reviews = reviewsFor(ids, addDays(today, -30), today);
   const milestones = milestonesInRange(addDays(today, -365), addDays(today, 365));
@@ -55,8 +65,9 @@ export function buildInsights(members: Member[], reviewerId: number): { insights
   const insights: MemberInsight[] = members.map((m) => {
     const leaveToday = leaves.find((l) => l.memberId === m.id) ?? null;
     const myTasks = tasksToday.filter((t) => t.memberId === m.id);
-    const myItems = weekItems.filter((w) => w.memberId === m.id);
-    const overdueItems = pastItems.filter((w) => w.memberId === m.id);
+    const myWeekTasks = weekTasks.filter((t) => t.memberId === m.id);
+    const weeklyReport = reportOf(m.id, weekStart);
+    const lastWeekReported = !!reportOf(m.id, addDays(weekStart, -7));
     const owned = milestones.filter((ms) => ms.ownerId === m.id && ms.status !== "done");
     const myReviews = reviews.filter((r) => r.memberId === m.id);
     const lastReview = myReviews.at(-1) ?? null;
@@ -67,22 +78,22 @@ export function buildInsights(members: Member[], reviewerId: number): { insights
 
     const attention: Attention[] = [];
     if (working && !fullDayOff && hour >= 10 && myTasks.length === 0) attention.push({ key: "no_plan", label: "오늘 할 일 미작성", level: "warn" });
-    if (myItems.length === 0) attention.push({ key: "no_week", label: "이번 주 항목 없음", level: "warn" });
-    if (overdueItems.length > 0) attention.push({ key: "overdue", label: `지난 주 미완료 ${overdueItems.length}개`, level: "warn" });
+    if (today >= lastWorkingDay && !weeklyReport) attention.push({ key: "no_report", label: "주간 보고 미작성", level: "warn" });
+    if (!lastWeekReported) attention.push({ key: "no_last_report", label: "지난주 주간 보고 없음", level: today < lastWorkingDay ? "warn" : "info" });
     const lateMs = owned.filter((ms) => isOverdue(ms, today));
     if (lateMs.length > 0) attention.push({ key: "milestone_overdue", label: `담당 마일스톤 지연 ${lateMs.length}개`, level: "warn" });
     if (!lastReview || lastReview.date < addDays(today, -7)) attention.push({ key: "no_review", label: lastReview ? "리뷰 7일 이상 없음" : "리뷰 기록 없음", level: "info" });
 
-    return { member: m, leaveToday, tasksToday: myTasks, weekItems: myItems, overdueItems, ownedMilestones: owned, lastReview, reviewedToday, myReviewToday, attention };
+    return { member: m, leaveToday, tasksToday: myTasks, weekTasks: myWeekTasks, weeklyReport, lastWeekReported, ownedMilestones: owned, lastReview, reviewedToday, myReviewToday, attention };
   });
 
   const summary: TeamSummary = {
     members: members.length,
     onLeave: leaves.length,
     planned: insights.filter((i) => i.tasksToday.length > 0).length,
-    weekDone: weekItems.filter((w) => w.status === "done").length,
-    weekTotal: weekItems.length,
-    overdue: pastItems.length,
+    weekDone: weekTasks.filter((t) => t.status === "done").length,
+    weekTotal: weekTasks.length,
+    reported: insights.filter((i) => i.weeklyReport).length,
     milestones: {
       active: milestones.filter((ms) => ids.includes(ms.ownerId ?? -1) && ms.status !== "done" && ms.status !== "on_hold").length,
       overdue: milestones.filter((ms) => ids.includes(ms.ownerId ?? -1) && isOverdue(ms, today)).length,

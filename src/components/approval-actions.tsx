@@ -13,7 +13,23 @@ type Decide = (decision: "approve" | "reject", note?: string) => Promise<{ ok: t
  * Approve / reject buttons for anything waiting on a leader (milestone proposals, leave requests).
  * `decide` is a server action bound to the item, e.g. `decideMilestone.bind(null, id)`. Reject asks for a reason.
  */
-export function ApprovalActions({ decide: decideAction, title, size = "sm", className }: { decide: Decide; title: string; size?: "sm" | "xs"; className?: string }) {
+export function ApprovalActions({
+  decide: decideAction,
+  title,
+  size = "sm",
+  className,
+  approveLabel = "승인",
+  rejectLabel = "반려",
+  reasonPlaceholder = "반려 사유 (제안자에게 보입니다)",
+}: {
+  decide: Decide;
+  title: string;
+  size?: "sm" | "xs";
+  className?: string;
+  approveLabel?: string;
+  rejectLabel?: string;
+  reasonPlaceholder?: string;
+}) {
   const [pending, start] = useTransition();
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
@@ -38,14 +54,14 @@ export function ApprovalActions({ decide: decideAction, title, size = "sm", clas
           decide("reject");
         }}
       >
-        <Textarea autoFocus value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} placeholder="반려 사유 (제안자에게 보입니다)" aria-label={`${title} 반려 사유`} className="bg-card text-sm" />
+        <Textarea autoFocus value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} placeholder={reasonPlaceholder} aria-label={`${title} ${rejectLabel} 사유`} className="bg-card text-sm" />
         <div className="flex justify-end gap-1.5">
           <Button type="button" variant="ghost" size={size} onClick={() => setRejecting(false)} disabled={pending}>
             취소
           </Button>
           <Button type="submit" variant="destructive" size={size} disabled={pending || !reason.trim()}>
             {pending && <Loader2Icon className="animate-spin" />}
-            반려
+            {rejectLabel}
           </Button>
         </div>
       </form>
@@ -54,13 +70,13 @@ export function ApprovalActions({ decide: decideAction, title, size = "sm", clas
 
   return (
     <div className={cn("flex shrink-0 gap-1.5", className)}>
-      <Button variant="outline" size={size} onClick={() => setRejecting(true)} disabled={pending} aria-label={`${title} 반려`}>
+      <Button variant="outline" size={size} onClick={() => setRejecting(true)} disabled={pending} aria-label={`${title} ${rejectLabel}`}>
         <XIcon />
-        반려
+        {rejectLabel}
       </Button>
-      <Button size={size} onClick={() => decide("approve")} disabled={pending} aria-label={`${title} 승인`}>
+      <Button size={size} onClick={() => decide("approve")} disabled={pending} aria-label={`${title} ${approveLabel}`}>
         {pending ? <Loader2Icon className="animate-spin" /> : <CheckIcon />}
-        승인
+        {approveLabel}
       </Button>
     </div>
   );
