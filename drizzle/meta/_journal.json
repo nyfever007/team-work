@@ -211,6 +211,13 @@
       "when": 1790481381326,
       "tag": "0029_great_shinko_yamashiro",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1790482875293,
+      "tag": "0030_even_sharon_ventura",
+      "breakpoints": true
     }
   ]
 }

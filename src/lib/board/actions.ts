@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth/dal";
 import { isValidKey, todayKey } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
+import { deletePostUploads, syncPostUploads } from "@/lib/uploads/storage";
+import { POST_HTML_MAX, htmlToText, sanitizePostHtml } from "./html";
 import { boardAccess, commentById, postById } from "./queries";
 import { DECISION_STATUSES, POST_CATEGORIES, REACTION_KINDS, type DecisionStatus, type PostCategory, type ReactionKind } from "./types";
 
@@ -41,7 +43,7 @@ export async function savePost(_prev: PostFormState, fd: FormData): Promise<Post
     teamId: text(fd, "teamId"),
     category: text(fd, "category"),
     title: text(fd, "title").replace(/\s+/g, " ").trim(),
-    body: text(fd, "body").trim(),
+    bodyHtml: text(fd, "bodyHtml").trim(),
     link: text(fd, "link").trim(),
     prompt: text(fd, "prompt").trim(),
     promptUse: text(fd, "promptUse").trim(),
@@ -58,7 +60,7 @@ export async function savePost(_prev: PostFormState, fd: FormData): Promise<Post
     if (!POST_CATEGORIES.includes(category)) return bad("분류를 선택하세요.");
     if (!raw.title) return bad("제목을 입력하세요.");
     if (raw.title.length > 120) return bad("제목은 120자 이내로 입력하세요.");
-    if (raw.body.length > 10000) return bad("본문은 10000자 이내로 입력하세요.");
+    if (raw.bodyHtml.length > POST_HTML_MAX) return bad("본문이 너무 깁니다.");
     if (raw.link && (raw.link.length > 500 || !isHttpUrl(raw.link))) return bad("링크는 http:// 또는 https:// 주소로 입력하세요.");
 
     const isPrompt = category === "prompt";
@@ -70,12 +72,19 @@ export async function savePost(_prev: PostFormState, fd: FormData): Promise<Post
     const decidedAt = isDecision ? raw.decidedAt || todayKey() : null;
     if (decidedAt && !isValidKey(decidedAt)) return bad("결정일이 올바르지 않습니다.");
     const decisionStatus: DecisionStatus | null = isDecision ? (DECISION_STATUSES.includes(raw.decisionStatus as DecisionStatus) ? (raw.decisionStatus as DecisionStatus) : "active") : null;
-    if (!isPrompt && !isDecision && !raw.body) return bad("본문을 입력하세요.");
+    const existing = raw.id ? loadPost(Number(raw.id)) : undefined;
+    const teamId = existing ? existing.teamId : Number(raw.teamId);
+    const bodyHtml = sanitizePostHtml(raw.bodyHtml, teamId);
+    const body = htmlToText(bodyHtml);
+    if (body.length > 10000) return bad("본문은 10000자 이내로 입력하세요.");
+    const hasMedia = /<(img|video|iframe)\b/.test(bodyHtml);
+    if (!isPrompt && !isDecision && !body && !hasMedia) return bad("본문을 입력하세요.");
 
     const values = {
       category,
       title: raw.title,
-      body: raw.body,
+      body,
+      bodyHtml: body || hasMedia ? bodyHtml : "",
       link: raw.link,
       prompt: isPrompt ? raw.prompt : "",
       promptUse: isPrompt ? raw.promptUse : "",
@@ -84,18 +93,18 @@ export async function savePost(_prev: PostFormState, fd: FormData): Promise<Post
       decisionStatus,
     };
 
-    if (raw.id) {
-      const post = loadPost(Number(raw.id));
+    if (existing) {
+      const post = existing;
       if (!access.canEdit(post)) return bad("작성자만 수정할 수 있습니다.");
       db.update(schema.posts)
         .set({ ...values, ...(category !== "question" ? { acceptedCommentId: null } : {}), updatedAt: new Date() })
         .where(eq(schema.posts.id, post.id))
         .run();
+      await syncPostUploads(post.id, post.teamId, values.bodyHtml);
       revalidate();
       return { ok: true, message: "글을 수정했습니다.", id: post.id };
     }
 
-    const teamId = Number(raw.teamId);
     if (!teamId || !access.canWrite(teamId)) return bad("이 팀 게시판에 글을 쓸 권한이 없습니다.");
     const me = access.me;
     const authorMemberId = me && me.teamId === teamId ? me.id : null;
@@ -104,6 +113,7 @@ export async function savePost(_prev: PostFormState, fd: FormData): Promise<Post
       .values({ teamId, ...values, authorUserId: user.id, authorMemberId, authorName: authorMemberId != null && me ? me.name : user.name })
       .returning({ id: schema.posts.id })
       .get();
+    await syncPostUploads(r.id, teamId, values.bodyHtml);
     revalidate();
     return { ok: true, message: "글을 올렸습니다.", id: r.id };
   } catch (e) {
@@ -117,6 +127,7 @@ export async function deletePost(id: number): Promise<BoardResult> {
     const user = await requireUser();
     const post = loadPost(id);
     if (!boardAccess(user).canDelete(post)) return { ok: false, error: "삭제할 권한이 없습니다." };
+    await deletePostUploads(post.id);
     db.delete(schema.posts).where(eq(schema.posts.id, post.id)).run();
     revalidate();
     return { ok: true, message: "글을 삭제했습니다." };

@@ -42,5 +42,5 @@ export const DECISION_STATUS_LABEL: Record<DecisionStatus, string> = { active: "
 export const CONTRIBUTION_POINTS: Record<ReactionKind | "accepted", number> = { helpful: 1, saved: 1, tried: 2, accepted: 3 };
 export const CONTRIBUTION_WEEKLY_CAP = 20;
 
-/** Body outline pre-filled for a new 의사결정 post. */
-export const DECISION_TEMPLATE = "배경\n- \n\n검토한 대안\n- \n\n결정 이유\n- \n\n후속 조치\n- ";
+/** Body outline (editor HTML) pre-filled for a new 의사결정 post. */
+export const DECISION_TEMPLATE = ["배경", "검토한 대안", "결정 이유", "후속 조치"].map((h) => `<h3>${h}</h3><ul><li><p></p></li></ul>`).join("");

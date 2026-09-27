@@ -44,3 +44,6 @@ next-env.d.ts
 /data/*.db
 /data/*.db-*
 !.env.example
+
+# 게시판 uploads (local disk)
+/data/uploads/

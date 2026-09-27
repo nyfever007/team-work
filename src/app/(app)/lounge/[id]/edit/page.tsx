@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeftIcon } from "lucide-react";
 import { requireUser } from "@/lib/auth/dal";
 import { todayKey } from "@/lib/dates";
+import { textToHtml } from "@/lib/board/html";
 import { boardAccess, postById } from "@/lib/board/queries";
 import { PostForm } from "@/components/board/post-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +42,7 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
             initial={{
               category: post.category,
               title: post.title,
-              body: post.body,
+              bodyHtml: post.bodyHtml || (post.body ? textToHtml(post.body) : ""),
               link: post.link,
               prompt: post.prompt,
               promptUse: post.promptUse,

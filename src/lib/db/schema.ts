@@ -645,7 +645,10 @@ export const posts = sqliteTable(
       .references(() => teams.id, { onDelete: "cascade" }),
     category: text("category", { enum: POST_CATEGORIES }).notNull(),
     title: text("title").notNull(),
+    // Plain-text version of the body (search, excerpts, AI sources). Rich posts also have `bodyHtml`.
     body: text("body").notNull().default(""),
+    // Sanitized HTML from the Tiptap editor (lib/board/html.ts). Empty for old plain-text posts.
+    bodyHtml: text("body_html").notNull().default(""),
     link: text("link").notNull().default(""),
     // AI 프롬프트 posts
     prompt: text("prompt").notNull().default(""),
@@ -708,6 +711,32 @@ export const postReactions = sqliteTable(
       .default(sql`(unixepoch() * 1000)`),
   },
   (t) => [uniqueIndex("post_reactions_unique").on(t.postId, t.memberId, t.kind), index("post_reactions_member_idx").on(t.memberId)],
+);
+
+/**
+ * Files uploaded from the 게시판 editor, stored on local disk under UPLOAD_DIR (lib/uploads/storage.ts) and served by
+ * /api/uploads/[id] to members of `teamId` only. `postId` is set when a saved post references the file; unreferenced
+ * uploads are swept after a day.
+ */
+export const uploads = sqliteTable(
+  "uploads",
+  {
+    id: text("id").primaryKey(), // random UUID; also the URL key
+    teamId: integer("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    postId: integer("post_id").references(() => posts.id, { onDelete: "set null" }),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind", { enum: ["image", "video"] }).notNull(),
+    mime: text("mime").notNull(),
+    size: integer("size").notNull(),
+    path: text("path").notNull(), // relative to UPLOAD_DIR
+    originalName: text("original_name").notNull().default(""),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("uploads_post_idx").on(t.postId), index("uploads_team_idx").on(t.teamId)],
 );
 
 /** 1:1 미팅 between a team leader and a member. `privateNotes` is leader-only; the rest is shared with the member. */
@@ -935,6 +964,7 @@ export type Team = typeof teams.$inferSelect;
 export type MemberRecord = typeof members.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type Post = typeof posts.$inferSelect;
+export type Upload = typeof uploads.$inferSelect;
 export type PostComment = typeof postComments.$inferSelect;
 export type PostReaction = typeof postReactions.$inferSelect;
 export type OneOnOne = typeof oneOnOnes.$inferSelect;

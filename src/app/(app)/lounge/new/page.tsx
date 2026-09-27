@@ -53,7 +53,7 @@ export default async function NewPostPage({ searchParams }: { searchParams: Prom
             initial={{
               category,
               title: "",
-              body: category === "decision" ? DECISION_TEMPLATE : "",
+              bodyHtml: category === "decision" ? DECISION_TEMPLATE : "",
               link: "",
               prompt: "",
               promptUse: "",

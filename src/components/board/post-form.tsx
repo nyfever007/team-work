@@ -12,11 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { RichEditor } from "./rich-editor";
 
 export type PostFormValues = {
   category: PostCategory;
   title: string;
-  body: string;
+  /** Editor HTML (old plain-text posts are converted with textToHtml on the page). */
+  bodyHtml: string;
   link: string;
   prompt: string;
   promptUse: string;
@@ -32,7 +34,9 @@ export function PostForm({ id, teamId, initial, cancelHref }: Props) {
   const [state, action, pending] = useActionState<PostFormState, FormData>(savePost, undefined);
   const v = state && !state.ok ? state.values : undefined;
   const [category, setCategory] = useState<PostCategory>((v?.category as PostCategory) || initial.category);
-  const [body, setBody] = useState(v?.body ?? initial.body);
+  const [body, setBody] = useState(v?.bodyHtml ?? initial.bodyHtml);
+  // Bumped when the category swaps the decision template in or out, so the uncontrolled editor remounts with it.
+  const [editorKey, setEditorKey] = useState(0);
   const [decidedAt, setDecidedAt] = useState(v?.decidedAt || initial.decidedAt);
 
   useEffect(() => {
@@ -44,8 +48,11 @@ export function PostForm({ id, teamId, initial, cancelHref }: Props) {
 
   const changeCategory = (c: PostCategory) => {
     setCategory(c);
-    if (c === "decision" && !body.trim()) setBody(DECISION_TEMPLATE);
-    if (c !== "decision" && body === DECISION_TEMPLATE) setBody("");
+    const next = c === "decision" && !body.trim() ? DECISION_TEMPLATE : c !== "decision" && body === DECISION_TEMPLATE ? "" : null;
+    if (next !== null) {
+      setBody(next);
+      setEditorKey((k) => k + 1);
+    }
   };
 
   return (
@@ -109,8 +116,8 @@ export function PostForm({ id, teamId, initial, cancelHref }: Props) {
       )}
 
       <div className="grid gap-1.5">
-        <Label htmlFor="body">{category === "prompt" ? "설명·결과 예시" : "본문"}</Label>
-        <Textarea id="body" name="body" rows={category === "decision" ? 12 : 10} value={body} onChange={(e) => setBody(e.target.value)} maxLength={10000} />
+        <Label>{category === "prompt" ? "설명·결과 예시" : "본문"}</Label>
+        <RichEditor key={editorKey} name="bodyHtml" teamId={teamId} initialHtml={body} onChange={setBody} minHeight={category === "prompt" ? 180 : 300} />
       </div>
 
       <div className="grid gap-1.5">

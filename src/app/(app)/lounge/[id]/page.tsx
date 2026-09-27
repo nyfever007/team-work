@@ -83,7 +83,12 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
             </div>
           )}
 
-          {post.body && <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">{post.body}</div>}
+          {post.bodyHtml ? (
+            // Sanitized on save (sanitizePostHtml): formatting, this team's uploads and YouTube embeds only.
+            <div className="rich-content prose prose-sm max-w-none break-words" dangerouslySetInnerHTML={{ __html: post.bodyHtml }} />
+          ) : (
+            post.body && <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">{post.body}</div>
+          )}
 
           {post.link && (
             <a href={post.link} target="_blank" rel="noopener noreferrer" className="inline-flex w-fit max-w-full items-center gap-1 text-sm text-accent-foreground underline-offset-4 hover:underline">
