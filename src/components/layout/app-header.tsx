@@ -2,7 +2,7 @@ import Link from "next/link";
 import { KeyRoundIcon, LogOutIcon } from "lucide-react";
 import type { SafeUser } from "@/lib/auth/session";
 import { logout } from "@/lib/auth/actions";
-import { todayKey } from "@/lib/dates";
+import { todayKey, weekStartOf } from "@/lib/dates";
 import { allMembers } from "@/lib/members/queries";
 import { defaultReviewWeek, memberReviewsForWeek, unreadReviewCount } from "@/lib/member-reviews/queries";
 import { milestoneAccess } from "@/lib/milestones/permissions";
@@ -12,6 +12,8 @@ import { pendingOvertimeFor } from "@/lib/overtime/queries";
 import { pendingGeneralFor } from "@/lib/general/queries";
 import { pendingTaxiFor } from "@/lib/taxi/queries";
 import { pendingDinnerFor } from "@/lib/dinner/queries";
+import { pulseAnswered } from "@/lib/pulse/queries";
+import { onboardingOpenCount } from "@/lib/onboarding/queries";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +29,7 @@ import { MainNav } from "./main-nav";
 /**
  * 내 업무: unread shared reviews. 팀: for leaders, teammates still to be reviewed this cycle
  * plus milestone proposals waiting for approval (admin: proposals only). 일정: leave requests to approve.
+ * 라운지: unanswered 펄스 체크 this week and open 온보딩 items.
  */
 function navBadges(user: SafeUser): Record<string, number> {
   const badges: Record<string, number> = {};
@@ -38,6 +41,8 @@ function navBadges(user: SafeUser): Record<string, number> {
   if (formApprovals) badges["/forms"] = formApprovals;
   if (user.memberId == null) return badges;
   badges["/my"] = unreadReviewCount(user.memberId);
+  // 라운지: this week's 펄스 체크 not answered yet + a newcomer's unchecked 온보딩 items.
+  badges["/lounge"] = (pulseAnswered(user.memberId, weekStartOf(todayKey())) ? 0 : 1) + onboardingOpenCount(user.memberId);
   const members = allMembers();
   const me = members.find((m) => m.id === user.memberId);
   if (me?.isLeader) {

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { CreateAccount } from "./create-account";
 import { EvaluationForm } from "./evaluation-form";
 import { EvaluationNav } from "./evaluation-nav";
+import { GrowthPanel, growthQuarter } from "./growth-panel";
 
 export const metadata: Metadata = { title: "구성원 상세" };
 
@@ -257,6 +258,8 @@ export default async function MemberDetailPage({ params, searchParams }: PagePro
               </CardContent>
             </Card>
           )}
+
+          {canSeeReviews && <GrowthPanel memberId={member.id} quarter={growthQuarter(sp.gq, period, today)} period={period} today={today} canComment={canReview} />}
         </div>
 
         {/* Leave + milestones */}

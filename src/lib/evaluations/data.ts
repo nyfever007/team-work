@@ -9,7 +9,12 @@ import { RATING_LABEL, isRating } from "@/lib/member-reviews/types";
 import type { Member } from "@/lib/members/types";
 import { STATUS_LABEL } from "@/lib/milestones/types";
 import { TASK_STATUS_LABEL } from "@/lib/tasks/types";
-import { childEvaluations, evaluationReference, type EvaluationReference } from "./queries";
+import { contributionFor, topPostsFor } from "@/lib/board/queries";
+import { POST_CATEGORY_LABEL } from "@/lib/board/types";
+import { growthGoalsFor } from "@/lib/growth/queries";
+import { GROWTH_STATUS_LABEL } from "@/lib/growth/types";
+import { oneOnOnesFor } from "@/lib/one-on-one/queries";
+import { childEvaluations, evaluationReference, quartersBetween, type EvaluationReference } from "./queries";
 import { CRITERIA, LEVEL_LABEL, childLevel, gradeOf, levelOf, periodLabel, type EvalLevel } from "./types";
 
 const cut = (s: string, n: number) => {
@@ -69,7 +74,31 @@ export function renderEvaluationSource(member: Member, period: string, ref: Eval
     lines.push("## 관련 마일스톤");
     for (const m of milestones.values()) lines.push(`- ${m}`);
   }
+  const life = teamLifeSource(member, ref.from, ref.to);
+  if (life) lines.push("", life);
   return lines.join("\n").trim();
+}
+
+/**
+ * 협업·성장 기록 for [from, to]: 게시판 공유 기여 (other teammates' reactions), 1:1 notes/actions (incl. the leader's
+ * private memo — evaluations are leader-only) and the quarter's 성장 계획. Returns null when there is nothing.
+ */
+function teamLifeSource(member: Member, from: string, to: string): string | null {
+  const lines: string[] = [];
+  const c = contributionFor([member.id], from, to).get(member.id);
+  if (c && (c.posts || c.points)) {
+    const top = topPostsFor(member.teamId, from, to, 50).filter((p) => p.authorMemberId === member.id).slice(0, 3);
+    lines.push(`게시판 공유 기여: 글 ${c.posts}개 · 도움됐어요 ${c.helpful} · 저장 ${c.saved} · 써봤어요 ${c.tried} · 답변 채택 ${c.accepted} · 기여 ${c.points}점${top.length ? ` (반응 많은 글: ${top.map((p) => `[${POST_CATEGORY_LABEL[p.category]}] ${cut(p.title, 40)}`).join("; ")})` : ""}`);
+  }
+  for (const m of oneOnOnesFor(member.id, from, to).slice(0, 4)) {
+    const acts = m.actions.map((a) => `${a.doneAt ? "완료" : "미완료"}: ${cut(a.title, 40)}`).join("; ");
+    const body = [m.notes && `합의: ${cut(m.notes, 160)}`, m.privateNotes && `팀장 메모: ${cut(m.privateNotes, 120)}`, acts && `후속 조치 ${acts}`].filter(Boolean).join(" / ");
+    if (body) lines.push(`1:1 ${md(m.date)}: ${body}`);
+  }
+  for (const g of growthGoalsFor(member.id, quartersBetween(from, to)).slice(0, 4)) {
+    lines.push(`성장 계획 ${g.quarter} [${GROWTH_STATUS_LABEL[g.status]}] ${cut(g.title, 60)}${g.reflection ? ` — 회고: ${cut(g.reflection, 120)}` : ""}${g.leaderComment ? ` — 팀장: ${cut(g.leaderComment, 80)}` : ""}`);
+  }
+  return lines.length ? ["## 협업 · 성장 기록", ...lines].join("\n") : null;
 }
 
 /** 주간: the week's records (renderMemberWeek) plus the leader's 주간 리뷰 for that week. */
@@ -79,6 +108,8 @@ function weekSource(member: Member, week: string): string | null {
   const hasReview = !!review && !!(review.summary || review.strengths || review.improvements || review.nextActions);
   if (!hasReview && !wk.items.length && !wk.tasks.length && !wk.extras.length && !wk.result) return null;
   const lines = [renderMemberWeek(wk)];
+  const life = teamLifeSource(member, week, addDays(week, 6));
+  if (life) lines.push("", life);
   if (hasReview) {
     lines.push("", `## 팀장 주간 리뷰 (${review.status === "shared" ? "공유됨" : "초안"})`);
     if (isRating(review.rating)) lines.push(`성과 수준: ${review.rating}/5 (${RATING_LABEL[review.rating]})`);
@@ -100,6 +131,8 @@ function childSource(member: Member, period: string, level: EvalLevel): string |
   lines.push(`평가 기간: ${periodLabel(period)} · 하위 ${kidLabel} 평가 ${kids.length}개 (확정 ${kids.filter((k) => k.status === "final").length}개)`);
   const ref = evaluationReference(member, period);
   lines.push(`기간 기록 요약: 목표 작성 ${ref.plannedDays}/${ref.workDays}일 · 목표 완료 ${ref.tasksDone}/${ref.tasksTotal} · 주간 보고 ${ref.reportedWeeks}/${ref.weeks}주 · 연차 ${ref.annualUsed}일 · 병가 ${ref.sickDays}일 · 조퇴 ${ref.earlyLeaves}회`);
+  const life = teamLifeSource(member, ref.from, ref.to);
+  if (life) lines.push("", life);
   lines.push("");
   for (const k of kids) {
     const g = gradeOf(k.total);

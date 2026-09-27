@@ -17,7 +17,15 @@ export default async function TeamLayout({ children }: LayoutProps<"/team">) {
           ...(canManage ? [{ href: "/team/members", label: "구성원" }] : []),
           { href: "/team/milestones", label: "마일스톤", badge: pendingMilestones(milestoneAccess(user).approveTeamIds).length },
           ...(user.role === "admin" || me ? [{ href: "/team/report", label: "주간 보고서" }] : []),
-          ...(canManage ? [{ href: "/team/reviews", label: "주간 리뷰" }, { href: "/team/appraisal", label: "고과평가" }, { href: "/team/manage", label: "관리" }] : []),
+          ...(canManage
+            ? [
+                { href: "/team/reviews", label: "주간 리뷰" },
+                { href: "/team/one-on-one", label: "1:1" },
+                { href: "/team/workload", label: "업무량" },
+                { href: "/team/appraisal", label: "고과평가" },
+                { href: "/team/manage", label: "관리" },
+              ]
+            : []),
         ]}
       />
       {children}

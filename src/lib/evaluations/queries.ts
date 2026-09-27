@@ -6,6 +6,8 @@ import type { MemberEvaluation } from "@/lib/db/schema";
 import { LEAVE_COST } from "@/lib/leaves/types";
 import { collectMemberWeek } from "@/lib/member-reviews/data";
 import type { Member } from "@/lib/members/types";
+import { contributionFor, type Contribution } from "@/lib/board/queries";
+import { oneOnOnesFor } from "@/lib/one-on-one/queries";
 import { childPeriods, periodRange } from "./types";
 
 export function evaluationFor(memberId: number, period: string): MemberEvaluation | undefined {
@@ -53,14 +55,37 @@ export type EvaluationReference = {
   sickDays: number;
   earlyLeaves: number;
   otherLeaveDays: number;
+  /** 게시판 공유 기여 (reactions from other teammates; see lib/board/queries `contributionFor`). */
+  shares: Contribution;
+  /** 1:1 미팅 held in the period and follow-up actions from them. */
+  oneOnOnes: number;
+  actionsDone: number;
+  actionsTotal: number;
+  /** 성장 계획 goals of the quarters overlapping the period. */
+  growthGoals: number;
+  growthDone: number;
 };
+
+/** Quarter keys ("2026-Q3") overlapping [from, to]. */
+export function quartersBetween(from: string, to: string): string[] {
+  const q = (key: string) => `${key.slice(0, 4)}-Q${Math.floor((Number(key.slice(5, 7)) - 1) / 3) + 1}`;
+  const out: string[] = [];
+  for (let k = from; k <= to; ) {
+    const key = q(k);
+    if (!out.includes(key)) out.push(key);
+    const y = Number(k.slice(0, 4));
+    const nextQ = Math.floor((Number(k.slice(5, 7)) - 1) / 3) + 1;
+    k = nextQ === 4 ? `${y + 1}-01-01` : `${y}-${String(nextQ * 3 + 1).padStart(2, "0")}-01`;
+  }
+  return out;
+}
 
 /** Facts from the member's own records in the period (up to today), shown next to the scores. */
 export function evaluationReference(member: Member, period: string): EvaluationReference {
   const { start, end } = periodRange(period);
   const today = todayKey();
   const to = end < today ? end : today;
-  const ref: EvaluationReference = { from: start, to, workDays: 0, plannedDays: 0, wrapDays: 0, tasksDone: 0, tasksTotal: 0, itemsDone: 0, itemsTotal: 0, weeks: 0, reportedWeeks: 0, reviewCount: 0, reviewAvg: null, annualUsed: 0, sickDays: 0, earlyLeaves: 0, otherLeaveDays: 0 };
+  const ref: EvaluationReference = { from: start, to, workDays: 0, plannedDays: 0, wrapDays: 0, tasksDone: 0, tasksTotal: 0, itemsDone: 0, itemsTotal: 0, weeks: 0, reportedWeeks: 0, reviewCount: 0, reviewAvg: null, annualUsed: 0, sickDays: 0, earlyLeaves: 0, otherLeaveDays: 0, shares: { posts: 0, helpful: 0, saved: 0, tried: 0, accepted: 0, points: 0 }, oneOnOnes: 0, actionsDone: 0, actionsTotal: 0, growthGoals: 0, growthDone: 0 };
   if (to < start) return ref;
 
   // Weekly stats; the first/last week may straddle the period boundary — close enough for a reference.
@@ -94,5 +119,15 @@ export function evaluationReference(member: Member, period: string): EvaluationR
     else ref.otherLeaveDays += 1;
   }
 
+  ref.shares = contributionFor([member.id], start, to).get(member.id) ?? ref.shares;
+  const meetings = oneOnOnesFor(member.id, start, to).filter((m) => m.status === "done" || m.date <= today);
+  ref.oneOnOnes = meetings.length;
+  for (const m of meetings) {
+    ref.actionsTotal += m.actions.length;
+    ref.actionsDone += m.actions.filter((a) => a.doneAt).length;
+  }
+  const goals = db.select({ status: schema.growthGoals.status }).from(schema.growthGoals).where(and(eq(schema.growthGoals.memberId, member.id), inArray(schema.growthGoals.quarter, quartersBetween(start, to)))).all();
+  ref.growthGoals = goals.filter((g) => g.status !== "dropped").length;
+  ref.growthDone = goals.filter((g) => g.status === "done").length;
   return ref;
 }

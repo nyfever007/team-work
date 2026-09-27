@@ -327,6 +327,12 @@ export function EvaluationForm({ memberId, memberName, period, initial, status: 
               <RefRow k="주간 보고 작성" v={`${r.reportedWeeks}/${r.weeks}주`} warn={r.weeks > 0 && r.reportedWeeks / r.weeks < 0.7} />
               <RefRow k="주간 리뷰 평균" v={r.reviewAvg != null ? `${r.reviewAvg}/5 (${r.reviewCount}회)` : "—"} />
             </RefGroup>
+            <RefGroup title="협업 · 성장">
+              <RefRow k="게시판 공유" v={`글 ${r.shares.posts} · 기여 ${r.shares.points}점`} />
+              <RefRow k="받은 반응" v={`도움 ${r.shares.helpful} · 써봤어요 ${r.shares.tried} · 채택 ${r.shares.accepted}`} />
+              <RefRow k="1:1 미팅" v={r.oneOnOnes ? `${r.oneOnOnes}회 · 후속 조치 ${r.actionsDone}/${r.actionsTotal}` : "—"} />
+              <RefRow k="성장 계획 달성" v={r.growthGoals ? `${r.growthDone}/${r.growthGoals}` : "—"} />
+            </RefGroup>
           </div>
         </aside>
       </CardContent>
