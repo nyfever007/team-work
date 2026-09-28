@@ -6,12 +6,10 @@ import { requireUser } from "@/lib/auth/dal";
 import { addDays, formatKoDate, isValidKey, todayKey, weekStartOf } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
 import { LEAVE_BADGE_CLASS, LEAVE_LABEL } from "@/lib/leaves/types";
-import { groupReviews, reviewsFor } from "@/lib/reviews/queries";
 import { groupTasks, tasksFor } from "@/lib/tasks/queries";
 import { isWorkingDay, loadHolidays, weekInfo } from "@/lib/workdays";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ReviewList } from "@/components/reviews/review-list";
 import { TaskLines } from "@/components/task-lines";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +36,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
               <Link href="/admin/members" className="underline underline-offset-4">
                 구성원 페이지
               </Link>
-              에서 이 계정을 구성원과 연결하면 날짜별 기록과 팀장 리뷰를 볼 수 있습니다.
+              에서 이 계정을 구성원과 연결하면 날짜별 기록을 볼 수 있습니다.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -48,7 +46,6 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
 
   const memberId = user.memberId;
   const taskMap = groupTasks(tasksFor([memberId], weekStart, weekEnd));
-  const reviewMap = groupReviews(reviewsFor([memberId], weekStart, weekEnd));
   const logs = db.select().from(schema.dailyLogs).where(and(eq(schema.dailyLogs.memberId, memberId), gte(schema.dailyLogs.date, weekStart), lte(schema.dailyLogs.date, weekEnd))).all();
   const logMap = new Map(logs.map((l) => [l.date, l]));
   const leaves = db.select().from(schema.leaves).where(and(eq(schema.leaves.memberId, memberId), gte(schema.leaves.date, weekStart), lte(schema.leaves.date, weekEnd))).all();
@@ -57,7 +54,6 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
   const days = week.days.filter((d) => d <= today && (isWorkingDay(d, holidays) || taskMap.has(`${memberId}:${d}`) || logMap.get(d)?.done.trim()));
   const totalTasks = [...taskMap.values()].reduce((n, t) => n + t.length, 0);
   const doneTasks = [...taskMap.values()].reduce((n, t) => n + t.filter((x) => x.status === "done").length, 0);
-  const reviewCount = [...reviewMap.values()].reduce((n, r) => n + r.length, 0);
 
   return (
     <div className="grid gap-6">
@@ -65,7 +61,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">내 기록</h1>
           <p className="text-sm text-muted-foreground">
-            {formatKoDate(weekStart)} ~ {formatKoDate(weekEnd)} · 완료 {doneTasks}/{totalTasks} · 팀장 리뷰 {reviewCount}건
+            {formatKoDate(weekStart)} ~ {formatKoDate(weekEnd)} · 완료 {doneTasks}/{totalTasks}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -91,7 +87,6 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
         {[...days].reverse().map((d) => {
           const tasks = taskMap.get(`${memberId}:${d}`) ?? [];
           const log = logMap.get(d);
-          const reviews = reviewMap.get(`${memberId}:${d}`) ?? [];
           const leave = leaveMap.get(d);
           const holiday = holidays.get(d);
           const isToday = d === today;
@@ -110,15 +105,9 @@ export default async function HistoryPage({ searchParams }: PageProps<"/history"
                   )}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-[1fr_minmax(260px,40%)]">
-                <div>
-                  <div className="mb-1 text-xs font-medium text-muted-foreground">한 일</div>
-                  <TaskLines tasks={tasks} review extra={log?.done} emptyText={isToday ? "아직 기록이 없습니다." : "기록이 없습니다."} />
-                </div>
-                <div>
-                  <div className="mb-1 text-xs font-medium text-muted-foreground">팀장 리뷰</div>
-                  <ReviewList reviews={reviews} emptyText={isToday ? "아직 리뷰가 없습니다." : "리뷰가 없습니다."} />
-                </div>
+              <CardContent>
+                <div className="mb-1 text-xs font-medium text-muted-foreground">한 일</div>
+                <TaskLines tasks={tasks} review extra={log?.done} emptyText={isToday ? "아직 기록이 없습니다." : "기록이 없습니다."} />
               </CardContent>
             </Card>
           );

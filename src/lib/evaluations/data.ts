@@ -66,7 +66,6 @@ export function renderEvaluationSource(member: Member, period: string, ref: Eval
     for (const e of wk.extras.slice(0, 3)) lines.push(`추가로 한 일 ${md(e.date)}: ${cut(e.text, 120)}`);
     if (wk.result) lines.push(`본인 주간 성과: ${cut(wk.result, 300)}`);
     if (review) lines.push(`주간 리뷰${isRating(review.rating) ? ` (성과 수준 ${review.rating}/5 ${RATING_LABEL[review.rating]})` : ""}: ${cut(review.summary, 200)}${review.improvements ? ` / 보완: ${cut(review.improvements, 120)}` : ""}`);
-    for (const c of wk.dailyReviews.slice(0, 2)) lines.push(`팀장 코멘트 ${md(c.date)}: ${cut(c.comment, 100)}`);
     lines.push("");
   }
 

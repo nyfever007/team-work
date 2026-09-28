@@ -10,6 +10,7 @@ import { ApprovalActions } from "@/components/approval-actions";
 import { memberById } from "@/lib/members/queries";
 import { formatDays } from "@/lib/requests/calc";
 import { requestAccess, requestById } from "@/lib/requests/queries";
+import { compGrantById } from "@/lib/leaves/comp";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +28,7 @@ export default async function RequestDetailPage({ params }: PageProps<"/schedule
   const access = requestAccess(user);
   const member = memberById(req.memberId);
   if (!member || !access.canView(member)) notFound();
+  const grant = req.type === "compensatory" && req.compGrantId != null ? compGrantById(req.compGrantId) : undefined;
 
   return (
     <div className="grid gap-4">
@@ -81,6 +83,20 @@ export default async function RequestDetailPage({ params }: PageProps<"/schedule
         <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
           <Field k="구분"><span className={cn("rounded px-1.5 py-0.5 text-xs font-medium", LEAVE_BADGE_CLASS[req.type])}>{LEAVE_LABEL[req.type]}</span></Field>
           <Field k="신청일자">{formatKoDate(req.startDate)}{req.endDate !== req.startDate && ` ~ ${formatKoDate(req.endDate)}`}</Field>
+          {req.type === "compensatory" && (
+            <div className="sm:col-span-2">
+              <Field k="사용 보상휴가">
+                {grant ? (
+                  <>
+                    <span className="font-medium">{grant.title}</span> <span className="text-muted-foreground tabular-nums">(총 {formatDays(grant.days)}일 · 잔여 {formatDays(grant.remaining)}일)</span>
+                    {grant.description && <span className="block whitespace-pre-wrap text-xs text-muted-foreground">{grant.description}</span>}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </Field>
+            </div>
+          )}
           <Field k="신청일수">{formatDays(req.days)}일</Field>
           <Field k="잔여일수">{formatDays(req.remainingDays)}일 <span className="text-muted-foreground">(사용 {formatDays(req.usedDays)}일 / 총 {formatDays(req.totalDays)}일)</span></Field>
           <Field k="업무대행">{req.delegate || "—"}</Field>

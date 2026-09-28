@@ -14,7 +14,6 @@ import { defaultReviewWeek, memberReviewsForWeek } from "@/lib/member-reviews/qu
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LeaderBadge } from "@/components/leader-badge";
-import { DailyReviewForm } from "@/components/reviews/daily-review-form";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "팀 관리" };
@@ -27,7 +26,7 @@ export default async function ManagePage() {
 
   const teams = allTeams().filter((t) => isAdmin || t.id === me?.teamId);
   const members = allMembers().filter((m) => teams.some((t) => t.id === m.teamId));
-  const { insights, summary, today, weekStart, working } = buildInsights(members, user.id);
+  const { insights, summary, today, weekStart, working } = buildInsights(members);
   const reviewer = reviewerContext(user);
 
   const flagged = insights.filter((i) => i.attention.some((a) => a.level === "warn"));
@@ -141,17 +140,14 @@ function MemberCard({ ins, today, weekStart, canReview }: { ins: MemberInsight; 
           </div>
         )}
 
-        <div className="grid gap-2 border-t pt-3 md:grid-cols-[1fr_auto] md:items-start">
-          <div className="grid gap-1.5">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><MessageSquareIcon className="size-3.5" />오늘 코멘트{ins.lastReview && ` · 마지막 ${formatKoDate(ins.lastReview.date)}`}</div>
-            {canReview ? <DailyReviewForm memberId={m.id} memberName={m.name} date={today} existing={ins.myReviewToday ?? undefined} /> : <p className="text-xs text-muted-foreground">리뷰 권한 없음</p>}
-          </div>
-          {canReview && (
-            <Link href={`/team/reviews?week=${weekStart}&member=${m.id}`} className="text-xs font-medium text-accent-foreground hover:underline">
+        {canReview && (
+          <div className="flex justify-end border-t pt-3">
+            <Link href={`/team/reviews?week=${weekStart}&member=${m.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-accent-foreground hover:underline">
+              <MessageSquareIcon className="size-3.5" />
               주간 리뷰 →
             </Link>
-          )}
-        </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

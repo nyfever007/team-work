@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import type { Member } from "@/lib/members/types";
+import { compSummary, type CompSummary } from "./comp";
 import { accruedAnnual, defaultAnnualDays, describeAnnualRule, leaveYear } from "./policy";
 import { LEAVE_COST, LEAVE_DAYS, type LeaveType } from "./types";
 
@@ -21,8 +22,10 @@ export type LeaveBalance = {
     remaining: number;
   };
   sick: { allowance: number; used: number; remaining: number };
-  /** Other categories used in this leave year (days). */
+  /** Other categories used in this leave year (days). 보상휴가 is listed in `comp` instead. */
   others: { type: LeaveType; days: number }[];
+  /** 보상휴가 granted by the company (all grants, not limited to the leave year). */
+  comp: CompSummary;
 };
 
 /** Annual entitlement for a member's current leave year (override or policy). */
@@ -45,7 +48,7 @@ export function leaveBalance(member: Member, today: string): LeaveBalance {
   const sickUsed = rows.filter((r) => r.type === "sick").reduce((n) => n + LEAVE_DAYS.sick, 0);
   const others = new Map<LeaveType, number>();
   for (const r of rows) {
-    if (LEAVE_COST[r.type] > 0 || r.type === "sick") continue;
+    if (LEAVE_COST[r.type] > 0 || r.type === "sick" || r.type === "compensatory") continue;
     others.set(r.type, (others.get(r.type) ?? 0) + LEAVE_DAYS[r.type]);
   }
 
@@ -54,5 +57,6 @@ export function leaveBalance(member: Member, today: string): LeaveBalance {
     annual: { mode, rule: mode === "override" ? "계약에 따라 지정" : describeAnnualRule(period.yearIndex), total, accrued, used: annualUsed, remaining: accrued - annualUsed },
     sick: { allowance: SICK_LEAVE_DAYS, used: sickUsed, remaining: SICK_LEAVE_DAYS - sickUsed },
     others: [...others.entries()].map(([type, days]) => ({ type, days })).filter((o) => o.days > 0),
+    comp: compSummary(member.id),
   };
 }

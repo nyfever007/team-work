@@ -33,7 +33,8 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/sched
   const memberInfo = members.map((m) => {
     const b = leaveBalance(m, date);
     const held = pendingUsage(m.id, b.period.start, b.period.end);
-    return { pendingAnnual: held.annual, pendingSick: held.sick, id: m.id, name: m.name, team: m.team, position: m.rank || m.position, totalDays: b.annual.accrued, annualTotal: b.annual.total, usedDays: b.annual.used, sickUsed: b.sick.used, sickAllowance: b.sick.allowance, period: `${b.period.start} ~ ${b.period.end}`, yearIndex: b.period.yearIndex };
+    const compGrants = b.comp.grants.map((g) => ({ id: g.id, title: g.title, description: g.description, days: g.days, used: g.used, pending: g.pending, available: g.available, grantedOn: g.grantedOn }));
+    return { compGrants, pendingAnnual: held.annual, pendingSick: held.sick, id: m.id, name: m.name, team: m.team, position: m.rank || m.position, totalDays: b.annual.accrued, annualTotal: b.annual.total, usedDays: b.annual.used, sickUsed: b.sick.used, sickAllowance: b.sick.allowance, period: `${b.period.start} ~ ${b.period.end}`, yearIndex: b.period.yearIndex };
   });
   const defaultMemberId = access.me?.id ?? members[0].id;
   const delegates = teamScopedMembers(user).map((m) => ({ id: m.id, name: m.name, team: m.team, phone: m.phone }));

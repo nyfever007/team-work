@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MessageSquareHeartIcon, MessageSquareIcon } from "lucide-react";
+import { MessageSquareHeartIcon } from "lucide-react";
 import { requireUser } from "@/lib/auth/dal";
-import { addDays, formatKoDate, formatTime, todayKey } from "@/lib/dates";
+import { addDays, formatKoDate, formatTime } from "@/lib/dates";
 import { sharedReviewsFor } from "@/lib/member-reviews/queries";
-import { reviewsFor } from "@/lib/reviews/queries";
 import { FadeIn } from "@/components/motion";
 import { MemberResponse } from "@/components/member-reviews/member-response";
 import { RatingBadge, ReviewView } from "@/components/member-reviews/review-view";
@@ -31,9 +30,7 @@ export default async function FeedbackPage() {
     );
   }
 
-  const today = todayKey();
   const reviews = sharedReviewsFor(user.memberId, 12);
-  const comments = reviewsFor([user.memberId], addDays(today, -30), today).reverse();
   const unread = reviews.filter((r) => !r.ackAt).length;
 
   return (
@@ -46,7 +43,7 @@ export default async function FeedbackPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid max-w-3xl gap-6">
         <div className="grid content-start gap-4">
           {reviews.length === 0 && (
             <Card>
@@ -83,19 +80,6 @@ export default async function FeedbackPage() {
           ))}
         </div>
 
-        <aside className="grid content-start gap-3">
-          <h3 className="text-sm font-semibold">최근 30일 일일 코멘트</h3>
-          {comments.length === 0 && <p className="text-sm text-muted-foreground">아직 없습니다.</p>}
-          {comments.map((c) => (
-            <Link key={c.id} href={`/my/history?week=${c.date}`} className="rounded-xl border bg-card p-3 text-sm shadow-xs transition-colors hover:border-brand/30">
-              <div className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
-                <MessageSquareIcon className="size-3" />
-                {formatKoDate(c.date)} · {c.reviewerName}
-              </div>
-              <p className="line-clamp-4 whitespace-pre-wrap">{c.comment}</p>
-            </Link>
-          ))}
-        </aside>
       </div>
     </div>
   );

@@ -2,13 +2,12 @@ import "server-only";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { addDays, formatKoDate, todayKey } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
-import type { DailyReview, DailyTask, Leave, MemberReview, WeeklyItem } from "@/lib/db/schema";
+import type { DailyTask, Leave, MemberReview, WeeklyItem } from "@/lib/db/schema";
 import { LEAVE_LABEL } from "@/lib/leaves/types";
 import type { Member } from "@/lib/members/types";
 import { milestonesInRange } from "@/lib/milestones/queries";
 import { STATUS_LABEL, isOverdue, type MilestoneRow } from "@/lib/milestones/types";
 import { weeklyItemsFor } from "@/lib/plans/queries";
-import { reviewsFor } from "@/lib/reviews/queries";
 import { tasksFor } from "@/lib/tasks/queries";
 import { TASK_STATUS_LABEL } from "@/lib/tasks/types";
 import { isWorkingDay, loadHolidays } from "@/lib/workdays";
@@ -43,7 +42,6 @@ export type MemberWeek = {
   extras: { date: string; text: string }[];
   result: string;
   leaves: Leave[];
-  dailyReviews: DailyReview[];
   prevReview: MemberReview | undefined;
   milestones: (MilestoneRow & { overdue: boolean })[];
   stats: MemberWeekStats;
@@ -61,7 +59,6 @@ export function collectMemberWeek(member: Member, weekStart: string): MemberWeek
   const logs = db.select().from(schema.dailyLogs).where(and(eq(schema.dailyLogs.memberId, id), gte(schema.dailyLogs.date, weekStart), lte(schema.dailyLogs.date, weekEnd))).all();
   const report = db.select().from(schema.weeklyReports).where(and(eq(schema.weeklyReports.memberId, id), eq(schema.weeklyReports.weekStart, weekStart))).get();
   const leaves = db.select().from(schema.leaves).where(and(eq(schema.leaves.memberId, id), gte(schema.leaves.date, weekStart), lte(schema.leaves.date, weekEnd))).all();
-  const dailyReviews = reviewsFor([id], weekStart, weekEnd);
   const prevReview = memberReviewFor(id, addDays(weekStart, -7));
 
   const linkedMs = new Set(items.map((w) => w.milestoneId).filter((v): v is number => v != null));
@@ -103,7 +100,6 @@ export function collectMemberWeek(member: Member, weekStart: string): MemberWeek
     extras,
     result: report?.result.trim() ?? "",
     leaves,
-    dailyReviews,
     prevReview: prevReview?.status === "shared" ? prevReview : undefined,
     milestones,
     stats,
@@ -158,11 +154,6 @@ export function renderMemberWeek(w: MemberWeek): string {
   if (w.result) {
     lines.push("## 본인 작성 주간 성과");
     lines.push(w.result);
-    lines.push("");
-  }
-  if (w.dailyReviews.length) {
-    lines.push("## 이번 주 팀장 일일 코멘트");
-    for (const r of w.dailyReviews) lines.push(`- ${r.date.slice(5)} ${r.comment.replace(/\n/g, " / ")}`);
     lines.push("");
   }
   if (w.milestones.length) {

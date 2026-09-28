@@ -316,6 +316,9 @@ export const leaveRequests = sqliteTable(
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
     type: text("type", { enum: LEAVE_TYPES }).notNull(),
+    // 보상휴가 only: which grant the days come out of (`comp_leave_grants.id`). No FK on purpose (SQLite ADD COLUMN drops ON DELETE);
+    // grants that are referenced by a live request can't be deleted (lib/leaves/comp-actions.ts).
+    compGrantId: integer("comp_grant_id"),
     startDate: text("start_date").notNull(),
     endDate: text("end_date").notNull(),
     days: real("days").notNull(), // 신청일수
@@ -344,6 +347,29 @@ export const leaveRequests = sqliteTable(
       .default(sql`(unixepoch() * 1000)`),
   },
   (t) => [index("leave_requests_member").on(t.memberId, t.startDate)],
+);
+
+/** 보상휴가 지급 (admin). Days are used through 보상휴가 leave requests pointing at the grant (`leave_requests.comp_grant_id`). */
+export const compLeaveGrants = sqliteTable(
+  "comp_leave_grants",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    days: real("days").notNull(),
+    grantedOn: text("granted_on").notNull(), // YYYY-MM-DD
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [index("comp_leave_grants_member").on(t.memberId)],
 );
 
 /**
@@ -954,6 +980,7 @@ export type MemberEvaluation = typeof memberEvaluations.$inferSelect;
 export type WeeklyReport = typeof weeklyReports.$inferSelect;
 export type Leave = typeof leaves.$inferSelect;
 export type LeaveRequest = typeof leaveRequests.$inferSelect;
+export type CompLeaveGrant = typeof compLeaveGrants.$inferSelect;
 export type OvertimeRequest = typeof overtimeRequests.$inferSelect;
 export type GeneralRequest = typeof generalRequests.$inferSelect;
 export type TaxiRequest = typeof taxiRequests.$inferSelect;

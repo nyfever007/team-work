@@ -12,6 +12,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
         items={[
           { href: "/admin/members", label: "구성원" },
           { href: "/admin/teams", label: "팀" },
+          { href: "/admin/comp-leave", label: "보상휴가" },
         ]}
       />
       {children}

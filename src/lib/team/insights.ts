@@ -2,15 +2,14 @@ import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { addDays, currentHourKST, todayKey, weekStartOf } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
-import type { DailyReview, DailyTask, Leave } from "@/lib/db/schema";
+import type { DailyTask, Leave } from "@/lib/db/schema";
 import type { Member } from "@/lib/members/types";
 import { milestonesInRange } from "@/lib/milestones/queries";
 import { isOverdue, type MilestoneRow } from "@/lib/milestones/types";
-import { reviewsFor } from "@/lib/reviews/queries";
 import { tasksFor } from "@/lib/tasks/queries";
 import { isWorkingDay, loadHolidays, weekInfo } from "@/lib/workdays";
 
-export type Attention = { key: "no_plan" | "no_report" | "no_last_report" | "milestone_overdue" | "no_review"; label: string; level: "warn" | "info" };
+export type Attention = { key: "no_plan" | "no_report" | "no_last_report" | "milestone_overdue"; label: string; level: "warn" | "info" };
 
 export type MemberInsight = {
   member: Member;
@@ -23,10 +22,6 @@ export type MemberInsight = {
   /** Whether last week's 주간 보고 was written. */
   lastWeekReported: boolean;
   ownedMilestones: MilestoneRow[];
-  lastReview: DailyReview | null;
-  reviewedToday: boolean;
-  /** The caller's own review text for today, if any (prefills the form). */
-  myReviewToday: string | null;
   attention: Attention[];
 };
 
@@ -42,7 +37,7 @@ export type TeamSummary = {
   milestones: { active: number; overdue: number; done: number };
 };
 
-export function buildInsights(members: Member[], reviewerId: number): { insights: MemberInsight[]; summary: TeamSummary; today: string; weekStart: string; working: boolean } {
+export function buildInsights(members: Member[]): { insights: MemberInsight[]; summary: TeamSummary; today: string; weekStart: string; working: boolean } {
   const today = todayKey();
   const hour = currentHourKST();
   const weekStart = weekStartOf(today);
@@ -59,7 +54,6 @@ export function buildInsights(members: Member[], reviewerId: number): { insights
   // 주간 보고 is due from the week's last working day.
   const lastWorkingDay = weekInfo(weekStart, holidays).lastWorkingDay ?? addDays(weekStart, 4);
   const leaves = ids.length ? db.select().from(schema.leaves).where(and(inArray(schema.leaves.memberId, ids), eq(schema.leaves.date, today))).all() : [];
-  const reviews = reviewsFor(ids, addDays(today, -30), today);
   const milestones = milestonesInRange(addDays(today, -365), addDays(today, 365));
 
   const insights: MemberInsight[] = members.map((m) => {
@@ -69,11 +63,6 @@ export function buildInsights(members: Member[], reviewerId: number): { insights
     const weeklyReport = reportOf(m.id, weekStart);
     const lastWeekReported = !!reportOf(m.id, addDays(weekStart, -7));
     const owned = milestones.filter((ms) => ms.ownerId === m.id && ms.status !== "done");
-    const myReviews = reviews.filter((r) => r.memberId === m.id);
-    const lastReview = myReviews.at(-1) ?? null;
-    const mine = myReviews.find((r) => r.date === today && r.reviewerId === reviewerId);
-    const reviewedToday = !!mine;
-    const myReviewToday = mine?.comment ?? null;
     const fullDayOff = leaveToday != null && !["half_am", "half_pm", "early_leave"].includes(leaveToday.type);
 
     const attention: Attention[] = [];
@@ -82,9 +71,8 @@ export function buildInsights(members: Member[], reviewerId: number): { insights
     if (!lastWeekReported) attention.push({ key: "no_last_report", label: "지난주 주간 보고 없음", level: today < lastWorkingDay ? "warn" : "info" });
     const lateMs = owned.filter((ms) => isOverdue(ms, today));
     if (lateMs.length > 0) attention.push({ key: "milestone_overdue", label: `담당 마일스톤 지연 ${lateMs.length}개`, level: "warn" });
-    if (!lastReview || lastReview.date < addDays(today, -7)) attention.push({ key: "no_review", label: lastReview ? "리뷰 7일 이상 없음" : "리뷰 기록 없음", level: "info" });
 
-    return { member: m, leaveToday, tasksToday: myTasks, weekTasks: myWeekTasks, weeklyReport, lastWeekReported, ownedMilestones: owned, lastReview, reviewedToday, myReviewToday, attention };
+    return { member: m, leaveToday, tasksToday: myTasks, weekTasks: myWeekTasks, weeklyReport, lastWeekReported, ownedMilestones: owned, attention };
   });
 
   const summary: TeamSummary = {

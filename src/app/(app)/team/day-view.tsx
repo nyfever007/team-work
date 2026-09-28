@@ -6,10 +6,7 @@ import { teamScopedMembers } from "@/lib/members/access";
 import { addDays, formatKoDate } from "@/lib/dates";
 import { db, schema } from "@/lib/db";
 import { LEAVE_BADGE_CLASS, LEAVE_LABEL } from "@/lib/leaves/types";
-import { groupReviews, reviewerContext, reviewsFor } from "@/lib/reviews/queries";
 import { groupTasks, tasksFor } from "@/lib/tasks/queries";
-import { DailyReviewForm } from "@/components/reviews/daily-review-form";
-import { ReviewList } from "@/components/reviews/review-list";
 import { isWorkingDay, loadHolidays } from "@/lib/workdays";
 import { TaskLines } from "@/components/task-lines";
 import { Button } from "@/components/ui/button";
@@ -28,9 +25,6 @@ export function DayView({ user, date, today, toggle }: { user: SafeUser; date: s
   const leaves = ids.length ? db.select().from(schema.leaves).where(and(eq(schema.leaves.date, date), inArray(schema.leaves.memberId, ids))).all() : [];
   const logByMember = new Map(logs.map((l) => [l.memberId, l]));
   const taskMap = groupTasks(tasksFor(ids, date, date));
-  const reviewMap = groupReviews(reviewsFor(ids, date, date));
-  const reviewer = reviewerContext(user);
-  const canReviewAny = members.some((m) => reviewer.canReview(m));
   const leaveByMember = new Map(leaves.map((l) => [l.memberId, l]));
 
   const written = members.filter((m) => (taskMap.get(`${m.id}:${date}`)?.length ?? 0) > 0 || logByMember.get(m.id)?.plan.trim()).length;
@@ -75,7 +69,7 @@ export function DayView({ user, date, today, toggle }: { user: SafeUser; date: s
               <TableHead className="w-44">구성원</TableHead>
               <TableHead className="w-28">상태</TableHead>
               <TableHead>할 일</TableHead>
-              <TableHead>한 일{canReviewAny && <span className="ml-1 font-normal text-muted-foreground">· 팀장 리뷰</span>}</TableHead>
+              <TableHead>한 일</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -90,8 +84,6 @@ export function DayView({ user, date, today, toggle }: { user: SafeUser; date: s
               const log = logByMember.get(m.id);
               const leave = leaveByMember.get(m.id);
               const tasks = taskMap.get(`${m.id}:${date}`) ?? [];
-              const reviews = reviewer.canSee(m) ? reviewMap.get(`${m.id}:${date}`) ?? [] : [];
-              const mine = reviews.find((r) => r.reviewerId === user.id);
               const hasPlan = tasks.length > 0 || !!log?.plan.trim();
               return (
                 <TableRow key={m.id} className={cn("align-top", m.id === user.memberId && "bg-muted/40")}>
@@ -117,14 +109,7 @@ export function DayView({ user, date, today, toggle }: { user: SafeUser; date: s
                     <TaskLines tasks={tasks} extra={tasks.length === 0 ? log?.plan : undefined} />
                   </TableCell>
                   <TableCell className="whitespace-normal text-sm">
-                    <div className="grid gap-2">
-                      <TaskLines tasks={tasks} review extra={log?.done} />
-                      <ReviewList reviews={reviews.filter((r) => r.reviewerId !== user.id)} />
-                      {mine && !reviewer.canReview(m) && <ReviewList reviews={[mine]} />}
-                      {reviewer.canReview(m) && (
-                        <DailyReviewForm memberId={m.id} memberName={m.name} date={date} existing={mine?.comment} />
-                      )}
-                    </div>
+                    <TaskLines tasks={tasks} review extra={log?.done} />
                   </TableCell>
                 </TableRow>
               );

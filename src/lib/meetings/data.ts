@@ -19,7 +19,7 @@ export function collectMeetingSource(teamId: number, weekStart: string): Meeting
   if (!lastWeek || !thisWeek) return null;
   const members = allMembers().filter((m) => m.teamId === teamId);
   const today = todayKey();
-  const { insights } = buildInsights(members, -1);
+  const { insights } = buildInsights(members);
   const nameOf = new Map(members.map((m) => [m.id, m.name]));
   const milestones = milestonesInRange(addDays(weekStart, -365), addDays(weekStart, 365))
     .filter((m) => m.teamId === teamId && (m.status !== "done" || m.dueDate >= addDays(weekStart, -14)))

@@ -15,7 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { DatePicker, DateRangePicker } from "@/components/date-picker";
 
-type MemberInfo = { id: number; name: string; team: string; position: string; totalDays: number; annualTotal: number; usedDays: number; sickUsed: number; sickAllowance: number; period: string; yearIndex: number; pendingAnnual: number; pendingSick: number };
+type CompGrantInfo = { id: number; title: string; description: string; days: number; used: number; pending: number; available: number; grantedOn: string };
+type MemberInfo = { compGrants: CompGrantInfo[]; id: number; name: string; team: string; position: string; totalDays: number; annualTotal: number; usedDays: number; sickUsed: number; sickAllowance: number; period: string; yearIndex: number; pendingAnnual: number; pendingSick: number };
 
 type Props = {
   members: MemberInfo[];
@@ -37,6 +38,11 @@ export function RequestForm({ members, defaultMemberId, defaultDate, today, holi
   const [delegate, setDelegate] = useState(v?.delegate ?? "");
   const [contact, setContact] = useState(v?.contact ?? "");
   const member = members.find((m) => m.id === memberId) ?? members[0];
+  const usableGrants = member.compGrants.filter((g) => g.available > 0);
+  const [grantPick, setGrantPick] = useState(Number(v?.compGrantId) || 0);
+  // Fall back to the first usable grant when the pick doesn't belong to the selected member (or none picked yet).
+  const grant = usableGrants.find((g) => g.id === grantPick) ?? usableGrants[0];
+  const isComp = type === "compensatory";
   const single = SINGLE_DAY_TYPES.includes(type);
   const holidaySet = useMemo(() => new Set(holidays), [holidays]);
 
@@ -87,9 +93,33 @@ export function RequestForm({ members, defaultMemberId, defaultDate, today, holi
             {type === "early_leave" && "조퇴는 일수에 포함되지 않고 연차도 차감되지 않습니다. 사유를 기재하세요."}
             {(type === "half_am" || type === "half_pm") && "반차는 하루만 선택하며 연차 0.5일이 차감됩니다."}
             {type === "annual" && "연차는 근무일 기준으로 1일씩 차감됩니다. 주말과 휴무일은 자동 제외됩니다."}
-            {["official", "petition", "compensatory", "sick", "maternity", "other"].includes(type) && "연차가 차감되지 않는 구분입니다. 사유를 상세히 기재하고 증빙서류를 함께 제출하세요."}
+            {isComp && "회사에서 지급한 보상휴가에서 근무일 기준 1일씩 차감됩니다. 연차는 차감되지 않습니다."}
+            {["official", "petition", "sick", "maternity", "other"].includes(type) && "연차가 차감되지 않는 구분입니다. 사유를 상세히 기재하고 증빙서류를 함께 제출하세요."}
           </p>
         </div>
+
+        {isComp && (
+          <div className="grid gap-1.5">
+            <Label>사용할 보상휴가<span className="ml-1 text-destructive">*</span></Label>
+            {usableGrants.length === 0 ? (
+              <p className="rounded-md border border-dashed px-3 py-3 text-sm text-muted-foreground">사용할 수 있는 보상휴가가 없습니다. 보상휴가는 관리자가 지급합니다.</p>
+            ) : (
+              <div role="radiogroup" aria-label="사용할 보상휴가" className="grid gap-1.5 sm:grid-cols-2">
+                {usableGrants.map((g) => (
+                  <button key={g.id} type="button" role="radio" aria-checked={grant?.id === g.id} onClick={() => setGrantPick(g.id)} className={cn("grid gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors hover:bg-muted", grant?.id === g.id && "border-primary bg-brand-soft hover:bg-brand-soft")}>
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="font-medium">{g.title}</span>
+                      <span className="shrink-0 tabular-nums text-accent-foreground">{formatDays(g.available)}일 남음</span>
+                    </span>
+                    {g.description && <span className="line-clamp-2 text-xs text-muted-foreground">{g.description}</span>}
+                    <span className="text-xs text-muted-foreground tabular-nums">지급 {g.grantedOn} · 총 {formatDays(g.days)}일{g.pending > 0 && ` · 승인 대기 ${formatDays(g.pending)}일`}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <input type="hidden" name="compGrantId" value={grant?.id ?? ""} />
+          </div>
+        )}
 
         <div className="grid gap-1.5 sm:max-w-md">
           <Label htmlFor="period">{single ? "신청일자" : "기간"}</Label>
@@ -140,7 +170,7 @@ export function RequestForm({ members, defaultMemberId, defaultDate, today, holi
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => router.back()} disabled={pending}>취소</Button>
-          <Button type="submit" disabled={pending || !calc || calc.dates.length === 0 || (calc.cost > 0 && calc.remaining < 0) || (type === "sick" && member.sickUsed + member.pendingSick + calc.days > member.sickAllowance)}>
+          <Button type="submit" disabled={pending || !calc || calc.dates.length === 0 || (calc.cost > 0 && calc.remaining < 0) || (type === "sick" && member.sickUsed + member.pendingSick + calc.days > member.sickAllowance) || (isComp && (!grant || calc.days > grant.available))}>
             {pending && <Loader2Icon className="size-4 animate-spin" />}
             저장
           </Button>
@@ -159,6 +189,9 @@ export function RequestForm({ members, defaultMemberId, defaultDate, today, holi
         <Row k="잔여일수" v={calc ? `${formatDays(calc.remaining)}일 (${formatDays(calc.used)}일 / ${formatDays(member.totalDays)}일)` : "—"} warn={!!calc && calc.remaining < 0} />
         {type === "sick" && calc && (
           <Row k="병가 잔여" v={`${formatDays(member.sickAllowance - member.sickUsed - member.pendingSick - calc.days)}일 (${formatDays(member.sickUsed + member.pendingSick + calc.days)}일 / ${member.sickAllowance}일)`} warn={member.sickUsed + member.pendingSick + calc.days > member.sickAllowance} />
+        )}
+        {isComp && calc && grant && (
+          <Row k="보상휴가 잔여" v={`${formatDays(grant.available - calc.days)}일 (${grant.title})`} warn={calc.days > grant.available} />
         )}
         <p className="text-xs text-muted-foreground">연차 연도(입사일 기준 {member.yearIndex}년차): {member.period}{member.totalDays < member.annualTotal && ` · 연간 ${formatDays(member.annualTotal)}일 중 ${formatDays(member.totalDays)}일 발생`}</p>
         {calc && calc.dates.length === 0 && <p className="text-xs text-destructive">선택한 기간에 근무일이 없습니다.</p>}

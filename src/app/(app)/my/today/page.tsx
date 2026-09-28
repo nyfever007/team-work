@@ -491,6 +491,7 @@ export default async function TodayPage() {
                     <span className='font-semibold tabular-nums'>
                       연차 {formatDays(balance.annual.remaining)}일 · 병가{' '}
                       {formatDays(balance.sick.remaining)}일
+                      {balance.comp.remaining > 0 && ` · 보상 ${formatDays(balance.comp.remaining)}일`}
                     </span>
                   </span>
                   <ArrowRightIcon className='size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5' />

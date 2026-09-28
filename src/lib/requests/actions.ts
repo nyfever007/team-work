@@ -10,6 +10,7 @@ import { memberById } from "@/lib/members/queries";
 import { loadHolidays } from "@/lib/workdays";
 import { leaveBalance } from "@/lib/leaves/balance";
 import { leaveYear } from "@/lib/leaves/policy";
+import { compGrantById } from "@/lib/leaves/comp";
 import { requestAnnualCost, requestDates, requestDays } from "./calc";
 import { overlappingPending, pendingUsage, requestAccess, requestById } from "./queries";
 
@@ -35,6 +36,7 @@ export async function createLeaveRequest(_prev: RequestFormState, formData: Form
     reason: String(formData.get("reason") ?? "").replace(/\r\n/g, "\n").trim(),
     delegate: String(formData.get("delegate") ?? "").trim(),
     contact: String(formData.get("contact") ?? "").trim(),
+    compGrantId: String(formData.get("compGrantId") ?? ""),
   };
   try {
     const user = await requireUser();
@@ -79,6 +81,14 @@ export async function createLeaveRequest(_prev: RequestFormState, formData: Form
     const heldNote = (n: number) => (n > 0 ? `, 승인 대기 ${n}일` : "");
     if (cost > 0 && remainingDays - held.annual < 0) return { ok: false, error: `잔여 연차가 부족합니다. (연차 연도 ${bal.period.start} ~ ${bal.period.end}, 잔여 ${bal.annual.remaining}일${heldNote(held.annual)}, 신청 ${cost}일)`, values: raw };
     if (type === "sick" && bal.sick.used + held.sick + days > bal.sick.allowance) return { ok: false, error: `병가 잔여일수가 부족합니다. (연차 연도 ${bal.period.start} ~ ${bal.period.end}, 잔여 ${bal.sick.remaining}일${heldNote(held.sick)}, 신청 ${days}일)`, values: raw };
+    // 보상휴가 comes out of a grant the admin gave this member; pending requests on the same grant are held back.
+    let compGrantId: number | null = null;
+    if (type === "compensatory") {
+      const grant = compGrantById(Number(raw.compGrantId));
+      if (!grant || grant.memberId !== memberId) return { ok: false, error: "사용할 보상휴가를 선택하세요.", values: raw };
+      if (days > grant.available) return { ok: false, error: `보상휴가 잔여일수가 부족합니다. (${grant.title}: 잔여 ${grant.remaining}일${heldNote(grant.pending)}, 신청 ${days}일)`, values: raw };
+      compGrantId = grant.id;
+    }
 
     // Filed by someone who may approve it (admin on behalf of a member): approved immediately.
     const autoApprove = access.autoApproves(memberId); // admin on behalf, or a team leader filing their own
@@ -91,6 +101,7 @@ export async function createLeaveRequest(_prev: RequestFormState, formData: Form
           docNo: nextDocNo(member.team, today),
           memberId,
           type,
+          compGrantId,
           startDate: start,
           endDate: end,
           days,
@@ -155,6 +166,12 @@ export async function decideLeaveRequest(id: number, decision: "approve" | "reje
     const cost = requestAnnualCost(req.type, dates);
     const usedDays = bal.annual.used + cost;
     if (cost > 0 && bal.annual.accrued - usedDays < 0) return { ok: false, error: `잔여 연차가 부족합니다. (잔여 ${bal.annual.remaining}일, 신청 ${cost}일)` };
+    if (req.type === "compensatory") {
+      const grant = req.compGrantId != null ? compGrantById(req.compGrantId) : undefined;
+      if (!grant) return { ok: false, error: "연결된 보상휴가가 삭제되었습니다. 반려 후 다시 신청하도록 안내해 주세요." };
+      // Only approved usage counts here (other pending requests are re-checked when they are decided).
+      if (requestDays(req.type, dates) > grant.remaining) return { ok: false, error: `보상휴가 잔여일수가 부족합니다. (${grant.title}: 잔여 ${grant.remaining}일)` };
+    }
 
     db.transaction((tx) => {
       tx.update(schema.leaveRequests)

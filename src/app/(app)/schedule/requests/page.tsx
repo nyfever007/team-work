@@ -84,6 +84,7 @@ export default async function RequestsPage() {
                 <TableHead className='text-right'>연차 잔여</TableHead>
                 <TableHead className='text-right'>병가 사용</TableHead>
                 <TableHead className='text-right'>병가 잔여</TableHead>
+                <TableHead className='text-right'>보상 잔여</TableHead>
                 <TableHead>연차 연도 (입사일 기준)</TableHead>
               </TableRow>
             </TableHeader>
@@ -120,6 +121,16 @@ export default async function RequestsPage() {
                     )}
                   >
                     {formatDays(b.sick.remaining)}
+                  </TableCell>
+                  <TableCell className='text-right tabular-nums'>
+                    {b.comp.total > 0 ? (
+                      <>
+                        <span className='font-medium'>{formatDays(b.comp.remaining)}</span>
+                        <span className='ml-1 text-[10px] text-muted-foreground'>/ {formatDays(b.comp.total)}</span>
+                      </>
+                    ) : (
+                      <span className='text-muted-foreground'>—</span>
+                    )}
                   </TableCell>
                   <TableCell className='text-xs text-muted-foreground tabular-nums'>
                     {b.period.yearIndex}년차 · {b.period.start} ~ {b.period.end}

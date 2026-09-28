@@ -260,7 +260,6 @@ function Workspace({ week, review, stats: s, today, nextPending }: { week: Membe
                   const ts = week.tasks.filter((t) => t.date === d);
                   const extra = week.extras.find((e) => e.date === d)?.text;
                   const leave = week.leaves.find((l) => l.date === d);
-                  const comments = week.dailyReviews.filter((r) => r.date === d);
                   return (
                     <li key={d} className="relative">
                       <span className={cn("absolute top-1.5 -left-[21px] size-2.5 rounded-full border-2 border-card", ts.length ? "bg-brand" : "bg-muted-foreground/30")} />
@@ -270,11 +269,6 @@ function Workspace({ week, review, stats: s, today, nextPending }: { week: Membe
                         {leave && <span className={cn("rounded px-1 text-[10px]", LEAVE_BADGE_CLASS[leave.type])}>{LEAVE_LABEL[leave.type]}</span>}
                       </div>
                       <TaskLines tasks={ts} review extra={extra} emptyText="기록 없음" />
-                      {comments.map((c) => (
-                        <p key={c.id} className="mt-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-900">
-                          {c.reviewerName}: {c.comment}
-                        </p>
-                      ))}
                     </li>
                   );
                 })}
